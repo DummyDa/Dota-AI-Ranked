@@ -1,0 +1,30 @@
+# Human recordings and generated training data are intentionally private.
+/data/
+/dataset/
+/archive/
+/logs/
+
+# Local development caches.
+/__pycache__/
+*.py[cod]
+/.npm-cache-lua/
+/node_modules/
+/.pytest_cache/
+/.coverage
+
+# Local-only legacy monolith; the maintained implementation is in src/.
+/mid_t1_start.lua
+
+# The OpenHyperAI checkout is a local reference only. Its required license is
+# preserved separately in OPENHYPERAI_LICENSE.
+/vendor/
+
+# Credentials and editor/system files.
+.env
+.env.*
+*.key
+*.pem
+.idea/
+.vscode/
+.DS_Store
+Thumbs.db
