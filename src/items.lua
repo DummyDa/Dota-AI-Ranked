@@ -155,7 +155,8 @@ return function(B)
         'modifier_item_aeon_disk_buff', 'modifier_item_sphere_target',
         'modifier_item_lotus_orb_active', 'modifier_antimage_counterspell' }
     local healMods = { 'modifier_item_urn_heal', 'modifier_item_spirit_vessel_heal',
-        'modifier_flask_healing', 'modifier_fountain_aura', 'modifier_fountain_aura_buff' }
+        'modifier_flask_healing', 'modifier_tango_heal',
+        'modifier_fountain_aura', 'modifier_fountain_aura_buff' }
 
     function I.consider(s, mode)
         if locked(s) then return nil end
@@ -245,6 +246,27 @@ return function(B)
             return cast(phase, nil, 'Phase movement toward current objective', 45)
         end
 
+        -- Tango is tree-targeted rather than hero-targeted. The adapter exposes
+        -- only nearby observed trees, and the executor validates the tree handle
+        -- and cast range before issuing the order.
+        if (h.hpPct or 1) < 0.78 and missing(h, 'hp') > 140
+            and not hasAny(h, healMods) and countEnemies(s, h, 650) == 0
+            and not B.has(h, 'modifier_fountain_aura_buff') then
+            local tango = (s.items or {}).item_tango or (s.items or {}).item_tango_single
+            if tango and tango.handle and tango.castable == true and not tango.hidden
+                and not tango.passive and not tango.inPhase and (tango.charges or 0) > 0 then
+                local tree, best = nil, math.huge
+                for _, candidate in ipairs(s.trees or {}) do
+                    local d = candidate and candidate.pos and B.dist(h.pos, candidate.pos) or math.huge
+                    if candidate and candidate.handle and d < best and d <= (tango.range or 0) + 25 then
+                        tree, best = candidate, d
+                    end
+                end
+                if tree then return {kind='cast', ability=tango, castType='tree', target=tree,
+                    reason='Use Tango on an observed nearby tree for lane sustain', priority=36} end
+            end
+        end
+
         for _, ally in ipairs(allies) do
             if valid(ally) and quiet(s, ally) then
                 local flask = ready(s, 'item_flask', 'target', ally)
@@ -305,6 +327,8 @@ return function(B)
         item_magic_wand = { 'item_holy_locket' },
         item_urn_of_shadows = { 'item_spirit_vessel' },
         item_force_staff = { 'item_hurricane_pike' },
+        item_invis_sword = { 'item_silver_edge' },
+        item_cyclone = { 'item_wind_waker' },
     }
     local function owned(s, name)
         local quantity = (s.ownedItems or {})[name]
@@ -312,6 +336,9 @@ return function(B)
     end
     local function satisfied(s, name)
         if owned(s, name) then return true end
+        if name == 'item_aghanims_shard' and B.has(s.hero, 'modifier_item_aghanims_shard') then return true end
+        if name == 'item_ultimate_scepter' and B.has(s.hero, 'modifier_item_ultimate_scepter_consumed') then return true end
+        if name == 'item_moon_shard' and B.has(s.hero, 'modifier_item_moon_shard_consumed') then return true end
         for _, upgrade in ipairs(upgrades[name] or {}) do
             if owned(s, upgrade) then return true end
         end
@@ -324,31 +351,29 @@ return function(B)
         if owner ~= s.hero.handle or (type(now) == 'number' and lastTime and now < lastTime) then I.reset() end
         owner, lastTime = s.hero.handle, now
         if B.executor and B.executor.quickbuyJob then return nil end
-        -- A free ward must never be the gate in front of the entire starting kit.
-        -- Queue inexpensive starting items together; append the optional ward last.
+        -- User-defined Spirit Breaker opening. Keep it exact and deterministic;
+        -- support consumables are replenished independently after this queue.
         if not starterDone and not starter then
-            if s.time>=600 or satisfied(s,'item_magic_stick') then starterDone=true
+            if s.time>=600 or satisfied(s,'item_boots') then starterDone=true
             elseif (queueCount(s) or 0)>0 and not wardOnlyQueue(s) then
                 inheritedAt=inheritedAt or now
                 waiting(s,'existing queue retained',inheritedAt)
                 return nil
             else
                 local names,required={},{}
-                for _,entry in ipairs({{'item_magic_stick',1},{'item_flask',1},{'item_clarity',1},{'item_branches',2}}) do
+                for _,entry in ipairs({{'item_wind_lace',1},{'item_branches',2},
+                    {'item_tango',1},{'item_faerie_fire',1}}) do
                     local name,count=entry[1],entry[2]
                     local have=s.ownedItems[name] or 0
                     if have<count then required[name]=count
                         for _=have+1,count do names[#names+1]=name end
                     end
                 end
-                local stock=B.call('Item','GetStockCount',nil,42,s.hero.team)
-                if not owned(s,'item_ward_observer') and not owned(s,'item_ward_dispenser') and type(stock)=='number' and stock>0 then
-                    names[#names+1]='item_ward_observer'; restockedAt=now
-                end
                 if #names>0 then
                     starter={required=required,seen={},since=now,names=names}
                     I.status='starting kit queued'
-                    return {kind='quickbuy',itemNames=names,itemName=names[1],reset=true,reason='Support starting kit; ward is optional'}
+                    return {kind='quickbuy',itemNames=names,itemName=names[1],reset=true,
+                        reason='Spirit Breaker start: Wind Lace, two Branches, Tango, Faerie Fire'}
                 end
                 starterDone=true
             end
@@ -365,7 +390,8 @@ return function(B)
                 if queueCount(s)==0 and now-starter.since>3 and now-(retryAt or -100)>5 then
                     retryAt=now
                     local missing={}
-                    for _,entry in ipairs({{'item_magic_stick',1},{'item_flask',1},{'item_clarity',1},{'item_branches',2}}) do
+                    for _,entry in ipairs({{'item_wind_lace',1},{'item_branches',2},
+                        {'item_tango',1},{'item_faerie_fire',1}}) do
                         if starter.required[entry[1]] and not starter.seen[entry[1]] then
                             for _=(s.ownedItems[entry[1]] or 0)+1,entry[2] do missing[#missing+1]=entry[1] end
                         end
@@ -380,7 +406,7 @@ return function(B)
         -- Never erase a partly purchased major item to replenish consumables.
         local hasWard=owned(s,'item_ward_observer') or owned(s,'item_ward_sentry') or owned(s,'item_ward_dispenser')
         local observerStock=B.call('Item','GetStockCount',nil,42,s.hero.team)
-        if not hasWard and not sidePending and now-restockedAt>180
+        if satisfied(s,'item_phase_boots') and not hasWard and not sidePending and now-restockedAt>180
             and type(observerStock)=='number' and observerStock>0 then
             sidePending='item_ward_observer'; restockedAt=now
             return {kind='quickbuy',itemName=sidePending,reset=pending==nil,
@@ -414,31 +440,44 @@ return function(B)
         local function want(name, condition)
             if condition ~= false and not satisfied(s, name) then wanted[#wanted + 1] = name end
         end
-        -- Support adaptation of hero_spirit_breaker.lua's sRoleItemsBuyList:
-        -- saves/detection first; deliberately no farming accelerator / Midas.
-        want('item_magic_stick')
-        want('item_boots')
-        want('item_tpscroll')
-        want('item_dust', detection)
-        local early = type(s.time) == 'number' and s.time < 600
-        want('item_flask', early and (s.hero.hpPct or 1) < 0.5)
-        want('item_clarity', early and (s.hero.manaPct or 1) < 0.35)
-        want('item_magic_wand')
-        -- Retain any existing upgraded boots. Phase is a preference, not a
-        -- reason to purchase a second set after the player chose different boots.
-        want('item_phase_boots', owned(s, 'item_boots'))
-        want('item_urn_of_shadows', antiheal)
+        -- Stable core requested for Spirit Breaker. Each goal remains pending
+        -- until it is observed on hero/courier, so autobuy cannot skip ahead.
+        if not satisfied(s, 'item_boots') then want('item_boots')
+        elseif not satisfied(s, 'item_phase_boots') then want('item_phase_boots')
+        elseif not satisfied(s, 'item_invis_sword') then want('item_invis_sword')
+        end
         local needsDispel = s.hero.rooted or s.hero.silenced
         for _, a in ipairs(s.allies or {}) do
             if valid(a) and (a.rooted or a.silenced) then needsDispel = true end
         end
-        want('item_glimmer_cape', pressure > 0 or s.role == 5)
-        want('item_force_staff')
-        want('item_spirit_vessel', antiheal)
-        want('item_lotus_orb', needsDispel)
-        want('item_glimmer_cape')
-        want('item_black_king_bar', pressure >= 2 or (needsDispel and hurt(s.hero)))
-        want('item_lotus_orb')
+        local branchDone = satisfied(s, 'item_yasha_and_kaya') or satisfied(s, 'item_cyclone')
+        if satisfied(s, 'item_invis_sword') and not branchDone then
+            -- Eul is the defensive/control branch; Yasha & Kaya is the default.
+            want((needsDispel or pressure >= 2) and 'item_cyclone' or 'item_yasha_and_kaya')
+        elseif branchDone and not satisfied(s, 'item_silver_edge') then
+            want('item_silver_edge')
+        end
+
+        -- Situational pool from the supplied build, evaluated only after the
+        -- core. Observable danger selects defensive utility; otherwise scale
+        -- Charge/Bash with shard, Aghanim, Octarine and late movement speed.
+        local coreDone = branchDone and satisfied(s, 'item_silver_edge')
+        if coreDone then
+            want('item_black_king_bar', pressure >= 2 or (needsDispel and hurt(s.hero)))
+            want('item_lotus_orb', needsDispel)
+            want('item_spirit_vessel', antiheal)
+            want('item_dust', detection)
+            want('item_blade_mail', pressure >= 2 and (s.hero.hpPct or 1) < 0.7)
+            want('item_aeon_disk', pressure >= 3 and (s.hero.hpPct or 1) < 0.55)
+            want('item_aghanims_shard', type(s.time)=='number' and s.time >= 900)
+            want('item_ultimate_scepter')
+            want('item_wind_waker', satisfied(s, 'item_cyclone') and needsDispel)
+            want('item_shivas_guard', pressure >= 2)
+            want('item_sphere', needsDispel)
+            want('item_octarine_core')
+            want('item_travel_boots', type(s.time)=='number' and s.time >= 2400)
+            want('item_moon_shard', type(s.time)=='number' and s.time >= 2700)
+        end
         -- Queue smoke only once core save tools are owned, with a grouped team.
         local grouped = 0
         for _, a in ipairs(s.allies or {}) do

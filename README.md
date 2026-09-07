@@ -15,8 +15,10 @@ are included for future imitation-learning experiments.
 - Global low-HP Charge, supported rotations from level 2, base exit through
   Charge while TP is on cooldown, and safe creep Charge for spare farm.
 - Charge, Bulldoze during Charge, Nether Strike and optional Planar Pocket.
-- Wards, runes, pull/stack attempts, grouping, towers and observed objectives.
-- Support-item rules and role-based quick-buy; Dota autobuy/autocourier perform
+- Wards, runes, pull/stack attempts, role-aware grouping, towers and observed objectives.
+- Spirit Breaker quick-buy core: Wind Lace/two Branches/Tango/Faerie Fire,
+  Phase Boots, Shadow Blade, Yasha & Kaya or Eul, then Silver Edge. Dota
+  autobuy/autocourier perform
   the actual purchase and delivery.
 - One draggable `Bot: ON/OFF` button. The bot starts enabled.
 

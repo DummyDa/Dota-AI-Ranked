@@ -69,7 +69,8 @@ return function(B)
             intent=move(s,pos,a)
         elseif a=='GO_TO_LANE' then intent=move(s,B.map.lanePoint(s,p.lane),a)
         elseif a=='FOLLOW_CORE' or a=='GROUP_WITH_TEAM' then
-            t=t or s.core
+            t=t or (a=='GROUP_WITH_TEAM' and B.modes and B.modes.groupTarget
+                and B.modes.groupTarget(s)) or s.core
             -- This is a macro destination, not a forced move-only loop. Local
             -- protection, combat, items and safety preempt it in the coordinator.
             if t and t.team==s.hero.team and t.alive then intent=move(s,B.toward(t.pos,B.map.home(s),280),a) end

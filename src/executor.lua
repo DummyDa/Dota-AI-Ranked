@@ -115,11 +115,12 @@ return function(B)
             if not B.call('Ability','IsCastable',false,a.handle,s.hero.mana) then return false end
             if E.pending then return false end
             if a.name=='item_ward_dispenser' then B.log('dispenser','Ward dispenser selection unverified; refusing cast',30) return false end
-            local bit=intent.castType=='target' and 8 or (intent.castType=='position' and 16 or 4)
+            local bit=(intent.castType=='target' or intent.castType=='tree') and 8
+                or (intent.castType=='position' and 16 or 4)
             if not B.flag(a.behavior,bit) then return false end
-            if intent.castType=='target' then
+            if intent.castType=='target' or intent.castType=='tree' then
                 if not target or target.invulnerable then return false end
-                if not B.flag(a.targetTeam,target.team==s.hero.team and 1 or 2) then return false end
+                if intent.castType~='tree' and not B.flag(a.targetTeam,target.team==s.hero.team and 1 or 2) then return false end
                 if target.index~=s.hero.index and not B.inCastRange(a,B.dist(s.hero.pos,target.pos),25) then
                     B.log('cast.range','Cast rejected by range: '..a.name..' range='..tostring(a.range),8)
                     return false

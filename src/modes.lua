@@ -475,21 +475,39 @@ return function(B)
         end
     end
 
-    local function grouping(out, s)
-        if isLane(s) then return end
+    function M.groupTarget(s)
+        local t = gameTime(s)
+        local best, bestScore
         for _, a in pairs(s.allies or EMPTY) do
             if realAlly(s, a) and hp(a) > 0.45 then
-                local count = 0
+                local nearby = 0
                 for _, other in pairs(s.allies or EMPTY) do
-                    if realAlly(s, other) and distance(other.pos, a.pos) < 1000 then count = count + 1 end
+                    if realAlly(s, other) and other.index ~= a.index
+                        and distance(other.pos, a.pos) < 1000 then nearby = nearby + 1 end
                 end
-                if count >= 2 or (core(s) and a.index == s.core.index) then
-                    local p = rear(s, a.pos, 320)
-                    local desire = distance(s.hero.pos, p) > 600 and 0.30 or 0.12
-                    offer(out, s, 'group', desire, move(s, p, 'Stay in support range of the allied group'), a, p)
+                local roleBias = 0
+                if t >= 600 and t < 1800 then
+                    -- During the farming window, pos 1 is deliberately the last
+                    -- grouping anchor. Prefer another support, then pos 2/3.
+                    if a.role == 4 or a.role == 5 then roleBias = -900
+                    elseif a.role == 2 or a.role == 3 then roleBias = -600
+                    elseif a.role == 1 then roleBias = 1800
+                    else roleBias = -250 end
                 end
+                local score = roleBias + distance(s.hero.pos, a.pos) * 0.12 - nearby * 500
+                if bestScore == nil or score < bestScore then best, bestScore = a, score end
             end
         end
+        return best
+    end
+    local function grouping(out, s)
+        if isLane(s) then return end
+        local a = M.groupTarget(s)
+        if not a then return end
+        local p = rear(s, a.pos, 320)
+        local desire = distance(s.hero.pos, p) > 600 and 0.30 or 0.12
+        offer(out, s, 'group', desire, move(s, p,
+            'Stay in support range of the preferred allied group anchor'), a, p)
     end
     local function buildings(out, s)
         for _, t in pairs(s.towers or EMPTY) do

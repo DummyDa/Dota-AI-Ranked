@@ -1,7 +1,7 @@
 {
   "name": "spirit-breaker-umbrella-bot",
   "private": true,
-  "version": "0.1.6",
+  "version": "0.1.7",
   "description": "Development-only Lua syntax checker; runtime requires only Umbrella",
   "devDependencies": {"luaparse": "0.3.1"}
 }

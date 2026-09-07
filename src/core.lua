@@ -1,5 +1,5 @@
 return function(B)
-    B.version = '0.1.6-charge-travel-farm'
+    B.version = '0.1.7-bara-items-grouping'
     B.config = {laningEnd=600, decisionInterval=0.12, modeHold=1.2,
         externalEnabled=false, bridgeEnabled=false, botEnabled=true, debug=true,
         lowHpChargeThreshold=0.25}

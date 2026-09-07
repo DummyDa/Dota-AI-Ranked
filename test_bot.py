@@ -99,6 +99,21 @@ class BotTest(unittest.TestCase):
     def test_quickbuy_retained_until_observed(self):
         self.check("clock=800; local s=B.adapter.refresh(); local i=B.items.purchase(s); assert(i.kind=='quickbuy'); assert(B.executor.execute(s,i)); assert(B.items.purchase(s)==nil); hero.items[0]=ability(i.itemName,4,0,0); clock=clock+1; local next=B.items.purchase(B.adapter.refresh()); assert(next and next.itemName~=i.itemName)")
 
+    def test_requested_core_purchase_order(self):
+        self.check("clock=800; local function next(name,slot) local i=B.items.purchase(B.adapter.refresh()); assert(i and i.itemName==name,name..' expected'); hero.items[slot]=ability(name,4,0,0); clock=clock+1 end; next('item_boots',0); next('item_phase_boots',1); next('item_invis_sword',2); next('item_yasha_and_kaya',3); next('item_silver_edge',4)")
+
+    def test_eul_branch_when_dispersal_is_needed(self):
+        self.check("clock=800; hero.items[0]=ability('item_phase_boots',4,0,0); hero.items[1]=ability('item_invis_sword',4,0,0); hero.silenced=true; local i=B.items.purchase(B.adapter.refresh()); assert(i and i.itemName=='item_cyclone')")
+
+    def test_consumed_upgrades_are_not_bought_again(self):
+        self.check("clock=2000; hero.items[0]=ability('item_phase_boots',4,0,0); hero.items[1]=ability('item_silver_edge',4,0,0); hero.items[2]=ability('item_yasha_and_kaya',4,0,0); hero.mods.modifier_item_aghanims_shard=true; hero.mods.modifier_item_ultimate_scepter_consumed=true; local i=B.items.purchase(B.adapter.refresh()); assert(i and i.itemName~='item_aghanims_shard' and i.itemName~='item_ultimate_scepter')")
+
+    def test_tango_uses_observed_tree(self):
+        self.check("hero.hp=600; local tree={index=50,pos=Vector(-6350,-6200,0)}; Entity.GetTreesInRadius=function() return {tree} end; hero.items[0]=ability('item_tango',8,165,0); local s=B.adapter.refresh(); local i=B.items.consider(s,{name='lane'}); assert(i and i.castType=='tree' and i.target.index==50); assert(B.executor.execute(s,i)); assert(orders[#orders].kind=='cast_target')")
+
+    def test_group_avoids_pos1_between_ten_and_thirty(self):
+        self.check("clock=800; core.pos=Vector(-6300,-6200,0); local support=unit(3,'npc_dota_hero_lion',2,-3500,-6200); support.roleFlags=8; local supportPlayer={hero=support}; world={hero,core,support}; Players.GetAll=function() return {player,corePlayer,supportPlayer} end; local s=B.adapter.refresh(); assert(B.modes.groupTarget(s).index==3); clock=2000; s=B.adapter.refresh(); assert(B.modes.groupTarget(s).index==2)")
+
     def test_recovery_hysteresis(self):
         self.check("local s=B.adapter.refresh(); s.hero.hpPct=.2; assert(B.arbiter.choose(s).name=='retreat'); s.now=s.now+2; s.hero.hpPct=.5; assert(B.arbiter.choose(s).name=='retreat'); s.hero.hpPct=.9; s.hero.manaPct=.9; s.now=s.now+2; assert(B.arbiter.choose(s).name~='retreat')")
 
@@ -128,19 +143,19 @@ class BotTest(unittest.TestCase):
         self.check("clock=800; core.pos=Vector(-6500,-6200,0); local t=unit(4,'npc_dota_badguys_tower1_mid',3,-6270,-6200); t.range=700; world={hero,core,t}; for i=1,3 do world[#world+1]=unit(10+i,'npc_dota_creep_goodguys_melee',2,-6200,-6200+i*10) end; t.target=world[4]; local s=B.adapter.refresh(); local found=false; for _,m in ipairs(B.modes.candidates(s)) do if m.name=='push' then found=true; assert(m.intent.allowTower) end end; assert(found); t.target=hero; s=B.adapter.refresh(); assert(B.arbiter.choose(s,B.threat.safety(s)).name=='SAFETY')")
 
     def test_observer_queue_not_overwritten(self):
-        self.check("Item.GetStockCount=function() return 2 end; local s=B.adapter.refresh(); local i=B.items.purchase(s); assert(i.itemNames[1]=='item_magic_stick' and i.itemNames[#i.itemNames]=='item_ward_observer'); B.executor.execute(s,i); clock=clock+1; assert(B.items.purchase(B.adapter.refresh())==nil)")
+        self.check("Item.GetStockCount=function() return 2 end; local s=B.adapter.refresh(); local i=B.items.purchase(s); assert(i.itemNames[1]=='item_wind_lace' and i.itemNames[#i.itemNames]=='item_faerie_fire'); B.executor.execute(s,i); clock=clock+1; assert(B.items.purchase(B.adapter.refresh())==nil)")
 
     def test_starting_queue_serialized_without_resets(self):
-        self.check("local s=B.adapter.refresh(); local i=B.items.purchase(s); B.executor.execute(s,i); for n=1,7 do clock=clock+.3; s=B.adapter.refresh(); B.executor.poll(s) end; assert(#orders==5); assert(orders[1].args[2]==true); for n=2,5 do assert(orders[n].args[2]==false) end; assert(orders[4].args[1]=='branches' and orders[5].args[1]=='branches')")
+        self.check("local s=B.adapter.refresh(); local i=B.items.purchase(s); B.executor.execute(s,i); for n=1,7 do clock=clock+.3; s=B.adapter.refresh(); B.executor.poll(s) end; assert(#orders==5); assert(orders[1].args[1]=='wind_lace' and orders[1].args[2]==true); for n=2,5 do assert(orders[n].args[2]==false) end; assert(orders[2].args[1]=='branches' and orders[3].args[1]=='branches' and orders[4].args[1]=='tango' and orders[5].args[1]=='faerie_fire')")
 
     def test_optional_missing_ward_does_not_block_boots(self):
-        self.check("Item.GetStockCount=function() return 2 end; local s=B.adapter.refresh(); local i=B.items.purchase(s); B.executor.execute(s,i); for n=1,7 do clock=clock+.3; B.executor.poll(B.adapter.refresh()) end; for n,name in ipairs({'item_magic_stick','item_flask','item_clarity','item_branches','item_branches'}) do hero.items[n-1]=ability(name,4,0,0) end; local next=B.items.purchase(B.adapter.refresh()); assert(next and next.itemName=='item_boots')")
+        self.check("Item.GetStockCount=function() return 2 end; local s=B.adapter.refresh(); local i=B.items.purchase(s); B.executor.execute(s,i); for n=1,7 do clock=clock+.3; B.executor.poll(B.adapter.refresh()) end; for n,name in ipairs({'item_wind_lace','item_branches','item_branches','item_tango','item_faerie_fire'}) do hero.items[n-1]=ability(name,4,0,0) end; local next=B.items.purchase(B.adapter.refresh()); assert(next and next.itemName=='item_boots')")
 
     def test_existing_quickbuy_is_not_erased_on_reload(self):
         self.check("local s=B.adapter.refresh(); s.quickbuy={m_quickBuyItems={34,39,16}}; assert(not B.items.purchase(s)); assert(#orders==0)")
 
     def test_old_ward_only_queue_does_not_block_starting_kit(self):
-        self.check("local s=B.adapter.refresh(); s.quickbuy={m_quickBuyItems={42}}; local i=B.items.purchase(s); assert(i and i.itemNames[1]=='item_magic_stick' and i.reset)")
+        self.check("local s=B.adapter.refresh(); s.quickbuy={m_quickBuyItems={42}}; local i=B.items.purchase(s); assert(i and i.itemNames[1]=='item_wind_lace' and i.reset)")
 
     def test_empty_starting_queue_is_repaired(self):
         self.check("local s=B.adapter.refresh(); local i=B.items.purchase(s); B.executor.execute(s,i); for n=1,7 do clock=clock+.3; B.executor.poll(B.adapter.refresh()) end; clock=clock+5; s=B.adapter.refresh(); s.quickbuy={m_quickBuyItems={}}; local retry=B.items.purchase(s); assert(retry and #retry.itemNames==5)")
