@@ -225,6 +225,10 @@ class ChatResponder:
     def _play(self, job: dict[str, Any]) -> None:
         try:
             assert self.voice is not None
+            # Give Source 2 time to open the selected recording endpoint after
+            # Lua executes +voicerecord. Without this pre-roll the first (or
+            # entire short) phrase can be lost on a virtual cable.
+            time.sleep(0.4)
             self.voice.play(job["audio"], job["sampleRate"])
         except Exception as exc:
             self.last_error = str(exc)

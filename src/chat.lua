@@ -78,7 +78,7 @@ return function(B)
         local duration=math.max(0.2,math.min(15,tonumber(job.duration) or 2))
         local commandOk=pcall(B.libs.Engine.ExecuteCommand,'+voicerecord')
         if not commandOk then B.voiceStatus='voice command failed' return end
-        C.recording=true C.stopAt=s.now+duration+0.25
+        C.recording=true C.stopAt=s.now+duration+0.9
         B.voiceStatus='speaking: '..tostring(job.text or '')
         post('/v1/voice/start',{id=job.id},function(response)
             if not response or tostring(response.code)~='200' then
