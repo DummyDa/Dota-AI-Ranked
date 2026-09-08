@@ -83,6 +83,30 @@ class ChatResponderTest(unittest.TestCase):
         self.assertEqual(len(calls[0][0]), 48000)
         self.assertEqual(calls[0][1]["samplerate"], 48000)
 
+    @patch.object(VoiceOutput, "synthesize")
+    def test_self_test_does_not_call_openrouter(self, synthesize) -> None:
+        import queue
+        import threading
+
+        synthesize.return_value = ([0.0], 44100, 0.1)
+        value = ChatResponder.__new__(ChatResponder)
+        value.input_queue = queue.Queue()
+        value.voice_queue = deque(maxlen=8)
+        value.lock = threading.RLock()
+        value.history = deque(maxlen=12)
+        value.last_error = ""
+        value.last_analysis = None
+        value.last_reply_by_source = {}
+        value.voice = VoiceOutput.__new__(VoiceOutput)
+        value.input_queue.put({"selfTest": True, "sourcePlayerId": 0,
+                               "sourceName": "Me", "messageText": "бара тест"})
+        with patch.object(value, "_openrouter", side_effect=AssertionError("must stay local")):
+            worker = threading.Thread(target=value._run, daemon=True)
+            worker.start()
+            value.input_queue.join()
+        self.assertEqual(value.last_analysis["model"], "local-audio-test")
+        self.assertEqual(len(value.voice_queue), 1)
+
 
 if __name__ == "__main__":
     unittest.main()

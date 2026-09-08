@@ -165,7 +165,14 @@ class ChatResponder:
         while True:
             message = self.input_queue.get()
             try:
-                result = self._openrouter(message)
+                if message.get("selfTest"):
+                    result = {
+                        "addressed": True,
+                        "reply": "Привет! Голосовой канал работает.",
+                        "model": "local-audio-test",
+                    }
+                else:
+                    result = self._openrouter(message)
                 with self.lock:
                     self.last_analysis = {**result, "source": message.get("sourceName"), "atText": message.get("messageText")}
                     self.history.append({
