@@ -89,7 +89,7 @@ class ChatResponder:
         return bool(self.api_key and self.voice)
 
     def submit(self, message: dict[str, Any]) -> bool:
-        if message.get("isSelf") or not str(message.get("messageText", "")).strip():
+        if (message.get("isSelf") and not message.get("selfTest")) or not str(message.get("messageText", "")).strip():
             return False
         try:
             self.input_queue.put_nowait(message)

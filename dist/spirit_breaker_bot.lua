@@ -3312,10 +3312,14 @@ return function(B)
         local sourceId=tonumber(message.source_player_id)
         if type(text)~='string' or #text==0 or #text>1024 or not sourceId then return true end
         local info=playerInfo(sourceId)
-        if info.isSelf then return true end
+        local lowered=text:lower()
+        local selfTest=info.isSelf and (lowered:find('бара',1,true)~=nil or
+            lowered:find('bara',1,true)~=nil or lowered:find('spirit breaker',1,true)~=nil)
+        if info.isSelf and not selfTest then return true end
         local payload={protocolVersion=1,messageText=text,channelType=tonumber(message.channel_type) or 0,
             gameTime=B.state and B.state.time or 0,sourcePlayerId=sourceId,sourceName=info.sourceName,
-            sourceHero=info.sourceHero,isAlly=info.isAlly,isSelf=info.isSelf,localName=info.localName}
+            sourceHero=info.sourceHero,isAlly=info.isAlly,isSelf=info.isSelf,selfTest=selfTest,
+            localName=info.localName}
         C.listenUntil=(B.state and B.state.now or 0)+60
         B.voiceStatus='analyzing '..info.sourceName
         post('/v1/chat',payload,function(response)

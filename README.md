@@ -7,7 +7,8 @@ with the low-cost `qwen/qwen3.7-flash` OpenRouter model and answer allied
 messages through local Piper TTS:
 
 1. Run `setup_voice.ps1` once.
-2. Select `Microphone (Voicemod Virtual Audio Device)` as Dota's voice input.
+2. Install VB-CABLE, reboot Windows, then select `CABLE Output (VB-Audio
+   Virtual Cable)` as Dota's voice input. Piper writes to `CABLE Input`.
 3. Run `configure_openrouter.bat` and paste a newly-created OpenRouter key.
 4. Keep `start_voice_bridge.bat` open while playing.
 

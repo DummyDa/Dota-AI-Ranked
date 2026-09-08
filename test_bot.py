@@ -294,6 +294,12 @@ class BotTest(unittest.TestCase):
     def test_allied_match_chat_is_forwarded_with_identity(self):
         self.check("B.script.OnUpdate(); local body; HTTP.Request=function(method,url,opts,cb) assert(url:find('/v1/chat')); body=B.json:decode(opts.data); cb({code=202,response='{\\\"ok\\\":true}'}) end; B.chatVoice.handleDecoded({source_player_id=1,channel_type=12,message_text='bara go top'}); assert(body and body.isAlly and not body.isSelf and body.sourceName=='Carry' and body.localName=='OpenAI bot' and body.messageText=='bara go top')")
 
+    def test_own_bara_message_is_forwarded_as_explicit_test(self):
+        self.check("B.script.OnUpdate(); local body; HTTP.Request=function(method,url,opts,cb) body=B.json:decode(opts.data); cb({code=202,response='{}'}) end; B.chatVoice.handleDecoded({source_player_id=0,channel_type=12,message_text='bara hello'}); assert(body and body.isSelf and body.selfTest and body.isAlly)")
+
+    def test_unaddressed_own_message_is_not_forwarded(self):
+        self.check("B.script.OnUpdate(); local called=false; HTTP.Request=function() called=true end; B.chatVoice.handleDecoded({source_player_id=0,channel_type=12,message_text='иду топ'}); assert(not called)")
+
     def test_enemy_chat_is_forwarded_but_cannot_be_marked_ally(self):
         self.check("local enemy=unit(9,'npc_dota_hero_lina',3,0,0); local enemyPlayer={hero=enemy,id=2,name='Enemy'}; Players.GetAll=function() return {player,corePlayer,enemyPlayer} end; B.script.OnUpdate(); local body; HTTP.Request=function(method,url,opts,cb) body=B.json:decode(opts.data); cb({code=202,response='{}'}) end; B.chatVoice.handleDecoded({source_player_id=2,channel_type=11,message_text='hello'}); assert(body and body.isAlly==false and body.sourceName=='Enemy')")
 

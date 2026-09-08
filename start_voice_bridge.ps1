@@ -13,4 +13,4 @@ if ([string]::IsNullOrWhiteSpace($key)) {
     throw 'OPENROUTER_API_KEY is not configured. Run configure_openrouter.bat.'
 }
 Set-Location -LiteralPath $project
-& $python -u bridge_server.py --chat-responder --no-record --openrouter-model 'qwen/qwen3.7-flash' --tts-device 'Voicemod'
+& $python -u bridge_server.py --chat-responder --no-record --openrouter-model 'qwen/qwen3.7-flash' --tts-device 'CABLE Input'
