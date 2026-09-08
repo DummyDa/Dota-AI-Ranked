@@ -279,6 +279,9 @@ class BotTest(unittest.TestCase):
     def test_game_start_greeting_is_sent_once_to_all_chat(self):
         self.check("B.script.OnGameStart(); B.script.OnUpdate(); clock=clock+.2; B.script.OnUpdate(); assert(#chats==1 and chats[1].channel=='All' and chats[1].message=='Удачи и веселой игры')")
 
+    def test_game_start_greeting_retries_until_channels_exist(self):
+        self.check("local calls=0; Chat.GetChannels=function() calls=calls+1; if calls<2 then return {} end return {'All','Team'} end; B.script.OnGameStart(); B.script.OnUpdate(); assert(#chats==0); clock=clock+2.1; B.script.OnUpdate(); assert(#chats==1 and calls==2)")
+
     def test_special_values_only_queried_on_relevant_items(self):
         self.check("Ability.GetLevelSpecialValueFor=function() error('unrelated special query') end; hero.abilities[0]=ability('spirit_breaker_charge_of_darkness',8,99999,2); local s=B.adapter.refresh(); assert(B.capabilities['Ability.GetLevelSpecialValueFor']==nil)")
 
