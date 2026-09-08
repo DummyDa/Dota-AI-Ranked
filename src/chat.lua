@@ -93,7 +93,7 @@ return function(B)
         end
         if C.recording or C.polling or s.now<C.nextPoll or s.now>C.listenUntil then return end
         C.nextPoll=s.now+0.35 C.polling=true
-        local sent=post('/v1/voice/poll',{},function(response)
+        local sent=post('/v1/voice/poll',{protocolVersion=1},function(response)
             C.polling=false
             if not response or tostring(response.code)~='200' or type(response.response)~='string' then return end
             local parsed,job=pcall(function() return B.json:decode(response.response) end)

@@ -163,6 +163,18 @@ class BridgeTest(unittest.TestCase):
         finally:
             raised.exception.close()
 
+    def test_empty_lua_array_body_is_accepted_for_voice_poll(self) -> None:
+        request = Request(
+            self.base + "/v1/voice/poll",
+            data=b"[]",
+            headers={"Content-Type": "application/json"},
+            method="POST",
+        )
+        with urlopen(request, timeout=2) as response:
+            payload = json.loads(response.read())
+        self.assertTrue(payload["ok"])
+        self.assertFalse(payload["ready"])
+
 
 if __name__ == "__main__":
     unittest.main()

@@ -427,6 +427,9 @@ class BridgeHandler(BaseHTTPRequestHandler):
         if length <= 0 or length > 2_000_000:
             raise ValueError("invalid body length")
         payload = json.loads(self.rfile.read(length).decode("utf-8"))
+        # Some Lua JSON encoders serialize an empty table as [] rather than {}.
+        if payload == []:
+            return {}
         if not isinstance(payload, dict):
             raise ValueError("JSON body must be an object")
         return payload
