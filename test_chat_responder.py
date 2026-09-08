@@ -5,7 +5,7 @@ import unittest
 from collections import deque
 from unittest.mock import patch
 
-from chat_responder import ChatResponder
+from chat_responder import ChatResponder, VoiceOutput
 
 
 class FakeResponse:
@@ -67,6 +67,21 @@ class ChatResponderTest(unittest.TestCase):
         value.input_queue = __import__("queue").Queue(maxsize=1)
         value.last_error = ""
         self.assertFalse(value.submit({"isSelf": True, "messageText": "иду топ"}))
+
+    def test_voice_output_resamples_for_virtual_cable(self) -> None:
+        import numpy as np
+
+        calls = []
+        fake_sd = type("FakeSD", (), {
+            "play": staticmethod(lambda audio, **kwargs: calls.append((audio, kwargs)))
+        })()
+        output = VoiceOutput.__new__(VoiceOutput)
+        output._sd = fake_sd
+        output.device_index = 22
+        output.output_sample_rate = 48000
+        output.play(np.ones(22050, dtype="float32"), 22050)
+        self.assertEqual(len(calls[0][0]), 48000)
+        self.assertEqual(calls[0][1]["samplerate"], 48000)
 
 
 if __name__ == "__main__":

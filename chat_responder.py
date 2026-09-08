@@ -34,7 +34,10 @@ class VoiceOutput:
         self._syn_config = SynthesisConfig(length_scale=0.9, volume=0.9)
         self._voice = PiperVoice.load(str(model_path), use_cuda=False)
         self.device_index, self.device_name = self._find_device(device_hint)
-        logging.info("Piper loaded: %s; output=%s", model_path.name, self.device_name)
+        device = self._sd.query_devices(self.device_index)
+        self.output_sample_rate = int(float(device.get("default_samplerate", 48000)))
+        logging.info("Piper loaded: %s; output=%s@%sHz", model_path.name,
+                     self.device_name, self.output_sample_rate)
 
     def _find_device(self, hint: str | None) -> tuple[int, str]:
         devices = self._sd.query_devices()
@@ -60,6 +63,14 @@ class VoiceOutput:
         return audio, sample_rate, len(audio) / sample_rate
 
     def play(self, audio: Any, sample_rate: int) -> None:
+        if sample_rate != self.output_sample_rate:
+            import numpy as np
+
+            target_length = max(1, round(len(audio) * self.output_sample_rate / sample_rate))
+            source_x = np.arange(len(audio), dtype=np.float64)
+            target_x = np.linspace(0, max(0, len(audio) - 1), target_length)
+            audio = np.interp(target_x, source_x, audio).astype("float32")
+            sample_rate = self.output_sample_rate
         self._sd.play(audio, samplerate=sample_rate, device=self.device_index, blocking=True)
 
 
@@ -231,6 +242,7 @@ class ChatResponder:
                 "model": self.model,
                 "ttsReady": self.voice is not None,
                 "ttsDevice": self.voice.device_name if self.voice else None,
+                "ttsSampleRate": self.voice.output_sample_rate if self.voice else None,
                 "pendingMessages": self.input_queue.qsize(),
                 "pendingVoices": len(self.voice_queue),
                 "voiceActive": self.active_voice is not None,
