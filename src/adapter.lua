@@ -73,7 +73,13 @@ return function(B)
             targetTeam=read('Ability','GetTargetTeam',h,0),hidden=read('Ability','IsHidden',h,false),
             passive=read('Ability','IsPassive',h,false),inPhase=read('Ability','IsInAbilityPhase',h,false),
             damage=read('Ability','GetDamage',h,0),item=isItem,specials={}}
-        if isItem then a.charges=read('Item','GetCurrentCharges',h,0) a.secondaryCharges=read('Item','GetSecondaryCharges',h,0) end
+        if isItem then
+            a.charges=read('Item','GetCurrentCharges',h,0)
+            a.secondaryCharges=read('Item','GetSecondaryCharges',h,0)
+            a.sellable=read('Item','IsSellable',h,false)
+            a.droppable=read('Item','IsDroppable',h,false)
+            a.cost=read('Item','GetCost',h,0)
+        end
         for _,n in ipairs(specialNames[a.name] or {}) do a.specials[n]=B.call('Ability','GetLevelSpecialValueFor',nil,h,n) end
         return a
     end
@@ -91,7 +97,7 @@ return function(B)
         local s={now=now,time=B.call('GameRules','GetDOTATime',0,false,false),hero=hero,player=player,
             role=role,lane=(team==2) == (role==5) and 'bot' or 'top',
             allies={},enemies={},creeps={},neutrals={},towers={},structures={},wards={},objectives={},
-            runes={},camps={},trees={},projectiles={},byIndex={[hero.index]=hero},abilities={},items={},ownedItems={}}
+            runes={},camps={},trees={},projectiles={},byIndex={[hero.index]=hero},abilities={},items={},inventory={},ownedItems={}}
         for _,p in pairs(B.call('Players','GetAll',{})) do
             local ah=read('Player','GetAssignedHero',p,nil)
             if ah and ah~=h and read('Entity','GetTeamNum',ah,-1)==team then
@@ -127,7 +133,10 @@ return function(B)
                 local a=A.ability(B.call('NPC','GetItemByIndex',nil,owner,slot),hero.mana,true,slot)
                 if a and a.name~='' then
                     s.ownedItems[a.name]=(s.ownedItems[a.name] or 0)+1
-                    if active and (slot<=5 or slot>=15) then s.items[a.name]=a hero.casting=hero.casting or a.inPhase end
+                    if active then
+                        s.inventory[#s.inventory+1]=a
+                        if slot<=5 or slot>=15 then s.items[a.name]=a hero.casting=hero.casting or a.inPhase end
+                    end
                 end
             end
         end

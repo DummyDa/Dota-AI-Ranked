@@ -30,7 +30,7 @@ local B = {}
 do
 local initialize = (function()
 return function(B)
-    B.version = '0.1.7-bara-items-grouping'
+    B.version = '0.1.8-idle-farm-trading'
     B.config = {laningEnd=600, decisionInterval=0.12, modeHold=1.2,
         externalEnabled=false, bridgeEnabled=false, botEnabled=true, debug=true,
         lowHpChargeThreshold=0.25}
@@ -39,7 +39,7 @@ return function(B)
     B.libs={Entity=Entity,NPC=NPC,Hero=Hero,Heroes=Heroes,Players=Players,Player=Player,
         NPCs=NPCs,Ability=Ability,Item=Item,Modifier=Modifier,Tower=Tower,Runes=Runes,Rune=Rune,
         Camps=Camps,Camp=Camp,Couriers=Couriers,LinearProjectiles=LinearProjectiles,
-        GridNav=GridNav,GameRules=GameRules,Engine=Engine}
+        GridNav=GridNav,GameRules=GameRules,Engine=Engine,Chat=Chat}
     B.logs, B.capabilities = {}, {}
     function B.log(key, message, interval)
         local now = B.state and B.state.now or (os and os.clock and os.clock() or 0)
@@ -178,7 +178,13 @@ return function(B)
             targetTeam=read('Ability','GetTargetTeam',h,0),hidden=read('Ability','IsHidden',h,false),
             passive=read('Ability','IsPassive',h,false),inPhase=read('Ability','IsInAbilityPhase',h,false),
             damage=read('Ability','GetDamage',h,0),item=isItem,specials={}}
-        if isItem then a.charges=read('Item','GetCurrentCharges',h,0) a.secondaryCharges=read('Item','GetSecondaryCharges',h,0) end
+        if isItem then
+            a.charges=read('Item','GetCurrentCharges',h,0)
+            a.secondaryCharges=read('Item','GetSecondaryCharges',h,0)
+            a.sellable=read('Item','IsSellable',h,false)
+            a.droppable=read('Item','IsDroppable',h,false)
+            a.cost=read('Item','GetCost',h,0)
+        end
         for _,n in ipairs(specialNames[a.name] or {}) do a.specials[n]=B.call('Ability','GetLevelSpecialValueFor',nil,h,n) end
         return a
     end
@@ -196,7 +202,7 @@ return function(B)
         local s={now=now,time=B.call('GameRules','GetDOTATime',0,false,false),hero=hero,player=player,
             role=role,lane=(team==2) == (role==5) and 'bot' or 'top',
             allies={},enemies={},creeps={},neutrals={},towers={},structures={},wards={},objectives={},
-            runes={},camps={},trees={},projectiles={},byIndex={[hero.index]=hero},abilities={},items={},ownedItems={}}
+            runes={},camps={},trees={},projectiles={},byIndex={[hero.index]=hero},abilities={},items={},inventory={},ownedItems={}}
         for _,p in pairs(B.call('Players','GetAll',{})) do
             local ah=read('Player','GetAssignedHero',p,nil)
             if ah and ah~=h and read('Entity','GetTeamNum',ah,-1)==team then
@@ -232,7 +238,10 @@ return function(B)
                 local a=A.ability(B.call('NPC','GetItemByIndex',nil,owner,slot),hero.mana,true,slot)
                 if a and a.name~='' then
                     s.ownedItems[a.name]=(s.ownedItems[a.name] or 0)+1
-                    if active and (slot<=5 or slot>=15) then s.items[a.name]=a hero.casting=hero.casting or a.inPhase end
+                    if active then
+                        s.inventory[#s.inventory+1]=a
+                        if slot<=5 or slot>=15 then s.items[a.name]=a hero.casting=hero.casting or a.inPhase end
+                    end
                 end
             end
         end
@@ -729,9 +738,19 @@ return function(B)
             local heroes, creeps = alliedCover(s, c)
             if enemy(s, c) and (c.hpPct or 0) > 0.45
                 and distance(s.hero, c) > 2500 and not towerDanger(s, c)
-                and (heroes >= 1 or creeps >= 2) and B.threat.safeEngage(s, c) then
+                and B.threat.safeEngage(s, c) then
                 local value = -distance(c, {pos=anchor}) / 1000 + heroes * 2 + creeps * 0.15
                 if not score or value > score then best, score = c, value end
+            end
+        end
+        if best then return best end
+        for _, n in ipairs(s.neutrals or {}) do
+            local name=n.name or ''
+            if enemy(s,n) and (n.hpPct or 0)>0.65 and distance(s.hero,n)>1800
+                and not name:find('ancient') and not name:find('roshan') and not name:find('miniboss')
+                and not towerDanger(s,n) and B.threat.safeEngage(s,n) then
+                local value=-distance(n,{pos=anchor})/1000
+                if not score or value>score then best,score=n,value end
             end
         end
         return best
@@ -739,7 +758,8 @@ return function(B)
 
     local function freeFarmChargeTarget(s, mode)
         local modeName = mode and mode.name or ''
-        if s.time < 600 or (modeName ~= 'farm' and modeName ~= 'lane' and modeName ~= 'idle')
+        if s.time < 600 or (modeName ~= 'farm' and modeName ~= 'lane' and modeName ~= 'idle'
+            and modeName ~= 'group')
             or mapFightActive(s) then return nil end
         for _, e in ipairs(s.enemies or {}) do
             if enemy(s, e) and distance(s.hero, e) < 1800 then return nil end
@@ -829,8 +849,9 @@ return function(B)
             local charge = abilities[chargeName]
             local tp = (s.items or {}).item_tpscroll
             local atBase = B.map and distance(h, {pos=B.map.home(s)}) <= 1100
-            local tpOnCooldown = tp and type(tp.cooldown) == 'number' and tp.cooldown > 0.1
-            if atBase and tpOnCooldown then
+            local tpUnavailable = not tp or (tp.charges or 0)<1
+                or (type(tp.cooldown) == 'number' and tp.cooldown > 0.1)
+            if atBase and tpUnavailable then
                 local target = baseChargeTarget(s)
                 if target and not h.rooted and ready(s, charge, 'target', target) then
                     local i = cast(charge, target, 'Leave base via Charge while TP is on cooldown', 90)
@@ -1006,6 +1027,7 @@ return function(B)
     B.items = I
     local pending, owner, lastTime
     local sidePending, restockedAt = nil, -math.huge
+    local cleanupAt = -math.huge
     local starter, starterDone, pendingAt, retryAt, inheritedAt
     local function queueCount(s)
         local q=s.quickbuy and s.quickbuy.m_quickBuyItems
@@ -1165,6 +1187,15 @@ return function(B)
         local fight = n == 'fight' or n == 'teamfight' or n == 'attack' or n == 'gank'
             or n == 'harass' or n == 'defend' or n == 'save' or n == 'save_ally' or n == 'protect_core'
 
+        -- Faerie Fire is an emergency combat heal, not disposable starter clutter.
+        -- Use it before the incoming damage can finish the hero; do not waste it
+        -- merely because some health is missing outside combat.
+        local faerie = ready(s, 'item_faerie_fire', 'none')
+        if faerie and (faerie.charges or 0) > 0 and enemies > 0 and hurt(h)
+            and ((h.hpPct or 1) <= 0.28 or (h.healthLossRate or 0) >= math.max(45,(h.hp or 0)*0.18)) then
+            return cast(faerie, nil, 'Emergency Faerie Fire while taking lethal pressure', 97)
+        end
+
         for _, name in ipairs({ 'item_magic_wand', 'item_magic_stick' }) do
             local a = ready(s, name, 'none')
             if a and (a.charges or 0) > 0 and (missing(h, 'hp') > 0 or missing(h, 'mana') > 0)
@@ -1309,6 +1340,34 @@ return function(B)
             end
         end
         return nil
+    end
+
+    -- Inventory maintenance is deliberately conservative. Selling is attempted
+    -- only at our fountain, outside combat, and only when all six active slots
+    -- are occupied. Boots and sustain consumables are never selected here.
+    function I.cleanup(s)
+        if not s or not s.hero or type(s.inventory)~='table' or s.now-cleanupAt<1.5 then return nil end
+        if B.dist(s.hero.pos,B.map.home(s))>1100 or s.hero.recentDamage>0
+            or countEnemies(s,s.hero,1400)>0 then return nil end
+        local active={}
+        for _,item in ipairs(s.inventory) do
+            if type(item.slot)=='number' and item.slot>=0 and item.slot<=5 then active[#active+1]=item end
+        end
+        if #active<6 then return nil end
+        local phase=type(s.ownedItems)=='table' and (s.ownedItems.item_phase_boots or 0)>0
+        local rank={item_branches=1,item_faerie_fire=2,item_wind_lace=3}
+        local best,bestRank
+        for _,item in ipairs(active) do
+            local r=rank[item.name]
+            local allowed=r==1 and s.time>=600
+                or r==2 and s.time>=900
+                or r==3 and phase
+            if allowed and item.sellable==true and not (item.name or ''):find('boots',1,true)
+                and (not bestRank or r<bestRank) then best,bestRank=item,r end
+        end
+        if not best then return nil end
+        cleanupAt=s.now
+        return {kind='sell',item=best,reason='Sell obsolete cheap slot blocker at fountain: '..best.name,priority=8}
     end
 
     local healingHeroes = { npc_dota_hero_huskar = true, npc_dota_hero_alchemist = true,
@@ -1502,6 +1561,7 @@ return function(B)
         pending, owner, lastTime = nil, nil, nil
         sidePending, restockedAt = nil, -math.huge
         starter,starterDone,pendingAt,retryAt,inheritedAt=nil,false,nil,nil,nil
+        cleanupAt=-math.huge
         I.status='initializing'
     end
 end
@@ -1587,7 +1647,7 @@ return function(B)
         if B.dist(s.hero.pos,c.pos)>850 or B.dist(c.pos,e.pos)>700 or towerDanger(s,e.pos) then return false end
         local allies,foes=counts(s,e.pos,1000)
         local landing=B.toward(e.pos,s.hero.pos,math.max(90,s.hero.range-20))
-        return allies>=foes and creepsAt(s,landing)<=4
+        return allies>=foes and creepsAt(s,landing)<=2
     end
     local function patrolIntent(s)
         local anchor=B.map.coreOnLane(s,s.core) and B.toward(s.core.pos,B.map.home(s),260) or B.map.lanePoint(s,s.lane)
@@ -1611,13 +1671,43 @@ return function(B)
         if best then patrol={pos=best,anchor=anchor,untilTime=s.now+3.5}; return move(s,best,'Reposition along the safe side of the wave') end
     end
     local function trades(out,s)
-        local ongoing=false
-        for _,e in ipairs(s.enemies) do if S.localFight(s,e) then ongoing=true break end end
-        if trade and s.now<trade.backUntil and not ongoing then
-            offer(out,'trade_reset',0.72,move(s,B.threat.retreat(s),'Disengage after a short trade'),nil,'trade_reset')
-            return
+        if trade then
+            local target=B.find(s.enemies,trade.index)
+            if not enemy(s,target) then trade=nil
+            else
+                local allies,foes=counts(s,target.pos,1000)
+                local ownLoss=(trade.startHpPct or s.hero.hpPct)-s.hero.hpPct
+                local enemyLoss=(trade.targetHpPct or target.hpPct)-target.hpPct
+                local bad=s.now>=trade.expires or s.hero.hpPct<0.58 or s.hero.recentDamage>55
+                    or foes>allies or creepsAt(s,s.hero.pos)>=3 or towerDanger(s,target.pos)
+                    or (trade.hits>=1 and ownLoss>math.max(0.07,enemyLoss+0.04))
+                    or trade.hits>=3
+                if bad then
+                    trade.resetUntil=trade.resetUntil or (s.now+1.25)
+                    if s.now<trade.resetUntil then
+                        offer(out,'trade_reset',0.74,move(s,B.threat.retreat(s),
+                            'Disengage after completed or unfavorable lane trade'),target,'trade_reset:'..target.index)
+                        return
+                    end
+                    trade=nil
+                else
+                    local d=B.dist(s.hero.pos,target.pos)
+                    local i
+                    if d<=s.hero.range+35 and not s.hero.disarmed then
+                        i={kind='attack',target=target,reason='Continue profitable lane trade',tradeContinue=true}
+                    elseif d<1100 then
+                        local landing=B.toward(target.pos,s.hero.pos,math.max(90,s.hero.range-20))
+                        i=move(s,landing,'Keep closing distance for the active lane trade')
+                    end
+                    if i then
+                        i.tradeIndex=target.index
+                        offer(out,'harass',0.66,i,target,'support_trade:'..target.index)
+                        return
+                    end
+                    trade=nil
+                end
+            end
         end
-        if trade and s.now>trade.expires then trade=nil end
         for _,e in ipairs(s.enemies) do
             local d=B.dist(s.hero.pos,e.pos)
             if enemy(s,e) and not e.attackImmune and d<1100 and s.hero.hpPct>0.48 and not s.hero.disarmed and not towerDanger(s,e.pos) then
@@ -1634,9 +1724,11 @@ return function(B)
                 if allies>=foes and a>=f*(protect and 0.8 or 0.95) and (participating or setup or creepsAt(s,landing)<3)
                     and (protect or participating or (s.hero.hpPct>0.65 and s.hero.recentDamage<45)) then
                     local i
-                    if d<=s.hero.range+35 then i={kind='attack',target=e,reason=protect and 'Peel the attacker away from the core' or 'Short supported trade',trade=not participating}
+                    if d<=s.hero.range+35 then i={kind='attack',target=e,reason=protect and 'Peel the attacker away from the core' or 'Start supported lane trade'}
                     else i=move(s,landing,protect and 'Approach to peel the core' or 'Close distance for a short trade') end
-                    if i and setup and not protect and not participating then i.trade=true end
+                    if i and setup and not protect and not participating then
+                        i.tradeStart=true i.tradeIndex=e.index
+                    end
                     offer(out,protect and 'protect_core' or participating and 'fight' or 'harass',protect and 0.86 or participating and 0.76 or setup and 0.58 or 0.5,i,e,'support_trade:'..e.index)
                 end
             end
@@ -1713,7 +1805,15 @@ return function(B)
         return out
     end
     function S.issued(s,i)
-        if i.trade then trade={expires=s.now+4,backUntil=s.now+s.hero.attackPoint+1.6} end
+        if i.tradeStart then
+            local target=B.find(s.enemies,i.tradeIndex)
+            if target and (not trade or trade.index~=i.tradeIndex) then
+                trade={index=i.tradeIndex,expires=s.now+6,startHpPct=s.hero.hpPct,
+                    targetHpPct=target.hpPct,hits=i.kind=='attack' and 1 or 0}
+            elseif trade and i.kind=='attack' then trade.hits=trade.hits+1 end
+        elseif i.tradeContinue and trade and trade.index==i.tradeIndex then
+            trade.hits=trade.hits+1
+        end
         if i.gank then lastGank=s.now; gank={index=i.target.index,untilTime=s.now+18} end
         if i.wardSpot then wardAttempt[i.wardSpot]=s.now+12 end
     end
@@ -2233,7 +2333,16 @@ return function(B)
         local a = M.groupTarget(s)
         if not a then return end
         local p = rear(s, a.pos, 320)
-        local desire = distance(s.hero.pos, p) > 600 and 0.30 or 0.12
+        local activity=0
+        for _,ally in pairs(s.allies or EMPTY) do
+            if realAlly(s,ally) and distance(ally.pos,a.pos)<1100
+                and (ally.attacking or ally.casting or ally.channeling or (ally.recentDamage or 0)>8) then
+                activity=activity+1
+            end
+        end
+        -- Idle proximity to teammates is not a task. Farm has priority until
+        -- the preferred anchor is actually grouping for an observed action.
+        local desire=activity>0 and (distance(s.hero.pos,p)>600 and 0.30 or 0.16) or 0.10
         offer(out, s, 'group', desire, move(s, p,
             'Stay in support range of the preferred allied group anchor'), a, p)
     end
@@ -2305,27 +2414,42 @@ return function(B)
     end
     local function farm(out, s)
         if gameTime(s) <= 600 or hp(s.hero) < 0.6 then return end
+        local offered=false
         for _, u in pairs(s.creeps or EMPTY) do
-            if enemy(s, u) and attackable(u) and distance(s.hero.pos, u.pos) < 1300 and quiet(s, u.pos) then
+            if enemy(s, u) and attackable(u) and distance(s.hero.pos, u.pos) < 2400 and quiet(s, u.pos) then
                 local reserved = false
                 for _, a in pairs(s.allies or EMPTY) do
                     if realAlly(s, a) and (a.role == nil or a.role <= 3) and distance(a.pos, u.pos) < 1500 then reserved = true end
                 end
-                if not reserved then offer(out, s, 'farm', 0.18, attack(s, u, 'Take spare lane farm away from allied cores', 1300), u) end
+                if not reserved then
+                    offer(out, s, 'farm', 0.34, attack(s, u,'Push spare lane farm away from allied cores',2400),u)
+                    offered=true
+                end
             end
         end
         for _,u in pairs(s.neutrals or EMPTY) do
-            if attackable(u) and distance(s.hero.pos,u.pos)<850 and quiet(s,u.pos)
+            if attackable(u) and distance(s.hero.pos,u.pos)<1800 and quiet(s,u.pos)
                 and not u.name:find('ancient') and not u.name:find('roshan') and not u.name:find('miniboss') then
                 local reserved=false
                 for _,a in ipairs(s.allies or EMPTY) do
                     if realAlly(s,a) and (a.role==nil or a.role<=3) and distance(a.pos,u.pos)<1500 then reserved=true end
                 end
-                if not reserved then offer(out,s,'farm',0.15,attack(s,u,'Take a nearby spare neutral camp',850),u) end
+                if not reserved then
+                    offer(out,s,'farm',0.31,attack(s,u,'Farm a nearby unreserved neutral camp',1800),u)
+                    offered=true
+                end
             end
         end
-        local p=B.map.lanePoint(s,B.map.classify(s.hero.pos))
-        offer(out,s,'lane',0.06,move(s,p,'Return toward the nearest lane while no team task is available'),nil,p,'late_lane')
+        local best,bestDistance
+        for _,laneName in ipairs({'top','mid','bot'}) do
+            local p=B.map.lanePoint(s,laneName)
+            local d=distance(s.hero.pos,p)
+            if not bestDistance or d<bestDistance then best,bestDistance=p,d end
+        end
+        if best then
+            offer(out,s,'farm',offered and 0.20 or 0.26,
+                move(s,best,'Move to the nearest lane for spare farm while the map is quiet'),nil,best,'late_lane')
+        end
     end
     function M.candidates(s)
         local out = {}
@@ -2471,7 +2595,8 @@ return function(B)
                 if not B.call('Entity','IsAlive',false,target.handle) then return false end
             end
         end
-        local key=kind..':'..tostring(target and target.index or '')..':'..tostring(intent.ability and intent.ability.name or '')
+        local key=kind..':'..tostring(target and target.index or '')..':'
+            ..tostring(intent.ability and intent.ability.name or intent.item and intent.item.name or '')
         if kind=='move' then
             local p=B.navigation.next(s,intent.pos,intent.allowTower,intent.emergency)
             if not p then return false end
@@ -2481,7 +2606,15 @@ return function(B)
             end
             return false
         end
-        if kind=='hold' then
+        if kind=='sell' then
+            local item=intent.item
+            if not item or not item.handle or type(item.slot)~='number' or item.slot<0 or item.slot>5 then return false end
+            if (item.name or ''):find('boots',1,true) then return false end
+            if B.dist(s.hero.pos,B.map.home(s))>1100 then return false end
+            if not B.call('Item','IsSellable',false,item.handle) then return false end
+            if not order(s,'DOTA_UNIT_ORDER_SELL_ITEM',nil,nil,item.handle) then return false end
+            E.lockUntil=s.now+0.2
+        elseif kind=='hold' then
             if E.lastKey==key and s.now-E.lastAt<0.7 then return false end
             if not invoke('Player','HoldPosition',s.player,s.hero.handle,false,false,false,'spirit_breaker_bot') then return false end
         elseif kind=='attack' then
@@ -3115,10 +3248,32 @@ do
 local initialize = (function()
 return function(B)
     local nextDecision=0
+    local greeted=false
     local function reset()
         B.adapter.reset() B.navigation.reset() B.arbiter.reset() B.executor.reset()
         B.items.reset() B.hero.reset() B.api.cancel() B.bridge.reset()
-        B.state=nil nextDecision=0 B.error=nil
+        B.state=nil nextDecision=0 B.error=nil greeted=false
+    end
+    local function greet(s)
+        if greeted or not s or type(s.time)~='number' or s.time<0 then return end
+        greeted=true
+        -- A hot reload during an existing match must not produce a late greeting.
+        if s.time>45 then return end
+        local channels=B.call('Chat','GetChannels',{})
+        local selected
+        for _,channel in pairs(channels or {}) do
+            if type(channel)=='string' then
+                local name=channel:lower():gsub('[%s_%-]','')
+                if name=='all' or name=='allchat' or name=='global' then selected=channel; break end
+            end
+        end
+        if not selected then
+            B.log('chat.channel','All-chat channel unavailable; greeting skipped',30)
+            return
+        end
+        local ok,err=pcall(B.libs.Chat.Say,selected,'Удачи и веселой игры')
+        if ok then B.log('chat.greeting','Sent one all-chat greeting',0)
+        else B.log('chat.error','Chat.Say: '..tostring(err),30) end
     end
     function B.setEnabled(value)
         if B.enabled==value then return end
@@ -3146,6 +3301,7 @@ return function(B)
         end
         local s=B.state
         if not s or not s.hero.alive or not B.enabled then return end
+        greet(s)
         B.log('status','Active pos '..s.role..' ('..tostring(s.laneSelectionFlags)..') | orders '..B.executor.count,15)
         B.executor.poll(s)
         -- Small cached-state safety scan every callback. Full decisions at 8.3Hz.
@@ -3164,6 +3320,8 @@ return function(B)
             if B.executor.execute(s,micro) then return end
         end
         if full and not emergency then
+            local cleanup=B.items.cleanup(s)
+            if cleanup and B.executor.execute(s,cleanup) then return end
             local purchase=B.items.purchase(s)
             if purchase then B.executor.execute(s,purchase) end
             if not B.executor.pending then

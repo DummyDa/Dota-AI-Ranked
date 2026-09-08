@@ -1,11 +1,13 @@
 -- Contract mocks, not the real game. Failures here never substitute for lobby QA.
 clock=100
 orders={}
+chats={}
 Vector=function(x,y,z) return {x=x,y=y,z=z or 0} end
 Vec2=function(x,y) return {x=x,y=y} end
 Color=function(...) return {...} end
 Enum={ModifierState={},ButtonCode={KEY_MOUSE1=1},UnitOrder={
-    DOTA_UNIT_ORDER_MOVE_TO_POSITION=1,DOTA_UNIT_ORDER_TRAIN_ABILITY=11,DOTA_UNIT_ORDER_PICKUP_RUNE=15},
+    DOTA_UNIT_ORDER_MOVE_TO_POSITION=1,DOTA_UNIT_ORDER_TRAIN_ABILITY=11,
+    DOTA_UNIT_ORDER_PICKUP_RUNE=15,DOTA_UNIT_ORDER_SELL_ITEM=17},
     PlayerOrderIssuer={DOTA_ORDER_ISSUER_PASSED_UNIT_ONLY=0}}
 function unit(index,name,team,x,y)
     return {index=index,name=name,team=team,pos=Vector(x,y,0),hp=1000,maxHp=1000,mana=500,maxMana=500,
@@ -67,7 +69,11 @@ Ability={GetName=function(a) return a.name end,GetLevel=function(a) return a.lev
     CanBeUpgraded=function(a) return a.upgradable or false end,
     CastTarget=function(...) record('cast_target',...) end,CastPosition=function(...) record('cast_position',...) end,
     CastNoTarget=function(...) record('cast_none',...) end}
-Item={GetCurrentCharges=function(a) return a.charges end,GetSecondaryCharges=function() return 0 end}
+Item={GetCurrentCharges=function(a) return a.charges end,GetSecondaryCharges=function() return 0 end,
+    IsSellable=function(a) return a.sellable~=false end,IsDroppable=function(a) return a.droppable~=false end,
+    GetCost=function(a) return a.cost or 50 end}
+Chat={GetChannels=function() return {'All','Team','ConsoleChat'} end,
+    Say=function(channel,message) chats[#chats+1]={channel=channel,message=message} end}
 Tower={GetAttackTarget=function(t) return t.target end}
 Couriers={GetLocal=function() return nil end}
 Camps={GetAll=function() return {} end}

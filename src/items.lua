@@ -7,6 +7,7 @@ return function(B)
     B.items = I
     local pending, owner, lastTime
     local sidePending, restockedAt = nil, -math.huge
+    local cleanupAt = -math.huge
     local starter, starterDone, pendingAt, retryAt, inheritedAt
     local function queueCount(s)
         local q=s.quickbuy and s.quickbuy.m_quickBuyItems
@@ -166,6 +167,15 @@ return function(B)
         local fight = n == 'fight' or n == 'teamfight' or n == 'attack' or n == 'gank'
             or n == 'harass' or n == 'defend' or n == 'save' or n == 'save_ally' or n == 'protect_core'
 
+        -- Faerie Fire is an emergency combat heal, not disposable starter clutter.
+        -- Use it before the incoming damage can finish the hero; do not waste it
+        -- merely because some health is missing outside combat.
+        local faerie = ready(s, 'item_faerie_fire', 'none')
+        if faerie and (faerie.charges or 0) > 0 and enemies > 0 and hurt(h)
+            and ((h.hpPct or 1) <= 0.28 or (h.healthLossRate or 0) >= math.max(45,(h.hp or 0)*0.18)) then
+            return cast(faerie, nil, 'Emergency Faerie Fire while taking lethal pressure', 97)
+        end
+
         for _, name in ipairs({ 'item_magic_wand', 'item_magic_stick' }) do
             local a = ready(s, name, 'none')
             if a and (a.charges or 0) > 0 and (missing(h, 'hp') > 0 or missing(h, 'mana') > 0)
@@ -310,6 +320,34 @@ return function(B)
             end
         end
         return nil
+    end
+
+    -- Inventory maintenance is deliberately conservative. Selling is attempted
+    -- only at our fountain, outside combat, and only when all six active slots
+    -- are occupied. Boots and sustain consumables are never selected here.
+    function I.cleanup(s)
+        if not s or not s.hero or type(s.inventory)~='table' or s.now-cleanupAt<1.5 then return nil end
+        if B.dist(s.hero.pos,B.map.home(s))>1100 or s.hero.recentDamage>0
+            or countEnemies(s,s.hero,1400)>0 then return nil end
+        local active={}
+        for _,item in ipairs(s.inventory) do
+            if type(item.slot)=='number' and item.slot>=0 and item.slot<=5 then active[#active+1]=item end
+        end
+        if #active<6 then return nil end
+        local phase=type(s.ownedItems)=='table' and (s.ownedItems.item_phase_boots or 0)>0
+        local rank={item_branches=1,item_faerie_fire=2,item_wind_lace=3}
+        local best,bestRank
+        for _,item in ipairs(active) do
+            local r=rank[item.name]
+            local allowed=r==1 and s.time>=600
+                or r==2 and s.time>=900
+                or r==3 and phase
+            if allowed and item.sellable==true and not (item.name or ''):find('boots',1,true)
+                and (not bestRank or r<bestRank) then best,bestRank=item,r end
+        end
+        if not best then return nil end
+        cleanupAt=s.now
+        return {kind='sell',item=best,reason='Sell obsolete cheap slot blocker at fountain: '..best.name,priority=8}
     end
 
     local healingHeroes = { npc_dota_hero_huskar = true, npc_dota_hero_alchemist = true,
@@ -503,6 +541,7 @@ return function(B)
         pending, owner, lastTime = nil, nil, nil
         sidePending, restockedAt = nil, -math.huge
         starter,starterDone,pendingAt,retryAt,inheritedAt=nil,false,nil,nil,nil
+        cleanupAt=-math.huge
         I.status='initializing'
     end
 end

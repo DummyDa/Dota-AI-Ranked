@@ -205,14 +205,20 @@ class BotTest(unittest.TestCase):
     def test_base_charge_waits_when_tp_ready(self):
         self.check("hero.pos=Vector(-7050,-6550,0); local q=ability('spirit_breaker_charge_of_darkness',8,0,2); local tp=ability('item_tpscroll',16,99999,0); tp.cooldown=0; hero.abilities[0]=q; hero.items[15]=tp; core.pos=Vector(1000,-5000,0); local c=unit(3,'npc_dota_creep_badguys_melee',3,1200,-5000); local cover1=unit(4,'npc_dota_creep_goodguys_melee',2,1000,-5000); local cover2=unit(5,'npc_dota_creep_goodguys_melee',2,1050,-5000); world={hero,core,c,cover1,cover2}; local s=B.adapter.refresh(); local i=B.hero.consider(s,{name='lane'}); assert(not i or not i.baseExitCharge)")
 
+    def test_base_charge_when_tp_missing(self):
+        self.check("hero.pos=Vector(-7050,-6550,0); hero.abilities[0]=ability('spirit_breaker_charge_of_darkness',8,0,2); local c=unit(3,'npc_dota_creep_badguys_melee',3,1200,-5000); world={hero,core,c}; local s=B.adapter.refresh(); local i=B.hero.consider(s,{name='lane'}); assert(i and i.baseExitCharge and i.target.index==3)")
+
     def test_free_farm_charge_can_target_creep_after_laning(self):
         self.check("clock=800; hero.pos=Vector(0,0,0); core.pos=Vector(-5000,-5000,0); local q=ability('spirit_breaker_charge_of_darkness',8,0,2); hero.abilities[0]=q; local c=unit(3,'npc_dota_creep_badguys_melee',3,1800,0); world={hero,core,c}; local s=B.adapter.refresh(); local i=B.hero.consider(s,{name='lane'}); assert(i and i.farmCharge and i.target.index==3); assert(B.executor.execute(s,i))")
+
+    def test_quiet_group_mode_yields_to_farm_charge(self):
+        self.check("clock=800; hero.pos=Vector(100,0,0); core.pos=Vector(-5000,-5000,0); hero.abilities[0]=ability('spirit_breaker_charge_of_darkness',8,0,2); local c=unit(3,'npc_dota_creep_badguys_melee',3,1900,0); world={hero,core,c}; local s=B.adapter.refresh(); local i=B.hero.consider(s,{name='group'}); assert(i and i.farmCharge and i.target.index==3); local m=B.arbiter.choose(s); assert(m.name=='farm',m.name)")
 
     def test_free_farm_charge_yields_to_map_fight(self):
         self.check("clock=800; hero.pos=Vector(0,0,0); core.pos=Vector(-5000,-5000,0); local q=ability('spirit_breaker_charge_of_darkness',8,0,2); hero.abilities[0]=q; local c=unit(3,'npc_dota_creep_badguys_melee',3,1800,0); local ally=unit(4,'npc_dota_hero_axe',2,5000,5000); local foe=unit(5,'npc_dota_hero_lina',3,5100,5000); world={hero,core,c,ally,foe}; local s=B.adapter.refresh(); s.byIndex[4].recentDamage=20; local i=B.hero.consider(s,{name='lane'}); assert(not i or not i.farmCharge)")
 
-    def test_lane_setup_trade_with_four_creeps(self):
-        self.check("hero.pos=Vector(4000,-5500,0); hero.hp=900; core.pos=Vector(3900,-5700,0); core.hp=900; local e=unit(3,'npc_dota_hero_lina',3,4300,-5500); world={hero,core,e}; for n=1,4 do local c=unit(3+n,'npc_dota_creep_badguys_melee',3,4250+n*10,-5500); c.range=150; world[#world+1]=c end; local s=B.adapter.refresh(); local hit; for _,m in ipairs(B.support.candidates(s)) do if m.name=='harass' then hit=m.intent end end; assert(hit and hit.kind=='move' or hit.kind=='attack')")
+    def test_lane_setup_avoids_four_creep_aggro(self):
+        self.check("hero.pos=Vector(4000,-5500,0); hero.hp=900; core.pos=Vector(3900,-5700,0); core.hp=900; local e=unit(3,'npc_dota_hero_lina',3,4300,-5500); world={hero,core,e}; for n=1,4 do local c=unit(3+n,'npc_dota_creep_badguys_melee',3,4250+n*10,-5500); c.range=150; world[#world+1]=c end; local s=B.adapter.refresh(); for _,m in ipairs(B.support.candidates(s)) do assert(m.name~='harass') end")
 
     def test_level_one_charge_in_local_fight_despite_patrol_mode(self):
         self.check("hero.level=1; hero.pos=Vector(4000,-5500,0); core.pos=Vector(4700,-5400,0); local e=unit(3,'npc_dota_hero_lina',3,4900,-5400); e.level=1; world={hero,core,e}; hero.abilities[0]=ability('spirit_breaker_charge_of_darkness',8,0,2); local s=B.adapter.refresh(); s.core.recentDamage=40; local i=B.hero.consider(s,{name='patrol'}); assert(i and i.ability.name=='spirit_breaker_charge_of_darkness'); assert(B.executor.execute(s,i))")
@@ -235,8 +241,8 @@ class BotTest(unittest.TestCase):
     def test_peel_for_injured_core_under_own_tower(self):
         self.check("hero.pos=Vector(4000,-5500,0); core.pos=Vector(3750,-5400,0); core.hp=450; local e=unit(3,'npc_dota_hero_lina',3,4200,-5400); local e2=unit(4,'npc_dota_hero_undying',3,4350,-5200); local t=unit(5,'npc_dota_goodguys_tower1_bot',2,3800,-5550); t.range=700; world={hero,core,e,e2,t}; local s=B.adapter.refresh(); local found=false; for _,m in ipairs(B.support.candidates(s)) do if m.name=='protect_core' then found=true; assert(m.intent.kind=='move' or m.intent.kind=='attack') end end; assert(found)")
 
-    def test_short_trade_disengages_without_cancelling_windup(self):
-        self.check("hero.pos=Vector(4000,-5500,0); core.pos=Vector(3700,-5500,0); local e=unit(3,'npc_dota_hero_lina',3,4120,-5500); world={hero,core,e}; local s=B.adapter.refresh(); local hit; for _,m in ipairs(B.support.candidates(s)) do if m.name=='harass' then hit=m.intent end end; assert(hit and hit.kind=='attack'); assert(B.executor.execute(s,hit)); s.now=s.now+.1; local back; for _,m in ipairs(B.support.candidates(s)) do if m.name=='trade_reset' then back=m.intent end end; assert(back and back.kind=='move'); assert(not B.executor.execute(s,back)); s.now=s.now+.5; assert(B.executor.execute(s,back))")
+    def test_short_trade_persists_for_multiple_hits(self):
+        self.check("hero.pos=Vector(4000,-5500,0); core.pos=Vector(3700,-5500,0); local e=unit(3,'npc_dota_hero_lina',3,4120,-5500); world={hero,core,e}; local s=B.adapter.refresh(); local hit; for _,m in ipairs(B.support.candidates(s)) do if m.name=='harass' then hit=m.intent end end; assert(hit and hit.kind=='attack'); assert(B.executor.execute(s,hit)); s.now=s.now+.6; local follow; for _,m in ipairs(B.support.candidates(s)) do if m.name=='harass' then follow=m.intent end assert(m.name~='trade_reset') end; assert(follow and follow.kind=='attack' and follow.tradeContinue)")
 
     def gank_setup(self):
         self.check("hero.pos=Vector(4000,-5500,0); hero.level=2; core.pos=Vector(3800,-5700,0); remote=unit(3,'npc_dota_hero_axe',2,1100,1100); remote.attacking=true; foe=unit(4,'npc_dota_hero_lina',3,1000,1200); foe.hp=600; world={hero,core,remote,foe}; hero.abilities[0]=ability('spirit_breaker_charge_of_darkness',8,99999,2)")
@@ -263,6 +269,15 @@ class BotTest(unittest.TestCase):
 
     def test_lane_ward_can_be_cast_without_totally_empty_lane(self):
         self.check("hero.pos=Vector(5450,-4850,0); core.pos=Vector(5550,-4700,0); hero.items[0]=ability('item_ward_observer',16,500,0); local e=unit(3,'npc_dota_hero_lina',3,6200,-4400); world={hero,core,e}; local s=B.adapter.refresh(); local ward; for _,m in ipairs(B.support.candidates(s)) do if m.name=='ward' and m.intent.kind=='cast' then ward=m.intent end end; assert(ward and ward.wardSpot); assert(B.executor.execute(s,ward))")
+
+    def test_faerie_fire_is_used_under_lethal_pressure(self):
+        self.check("hero.hp=250; hero.items[0]=ability('item_faerie_fire',4,0,0); local e=unit(3,'npc_dota_hero_lina',3,-6300,-6200); world={hero,core,e}; local s=B.adapter.refresh(); s.hero.recentDamage=100; local i=B.items.consider(s,{name='fight'}); assert(i and i.ability.name=='item_faerie_fire' and i.priority==97)")
+
+    def test_obsolete_branch_is_sold_only_from_full_inventory_at_fountain(self):
+        self.check("clock=1100; hero.pos=Vector(-7050,-6550,0); for slot,name in ipairs({'item_phase_boots','item_branches','item_faerie_fire','item_tango','item_invis_sword','item_yasha_and_kaya'}) do hero.items[slot-1]=ability(name,4,0,0) end; local s=B.adapter.refresh(); local i=B.items.cleanup(s); assert(i and i.kind=='sell' and i.item.name=='item_branches'); assert(B.executor.execute(s,i)); assert(orders[#orders].kind=='order' and orders[#orders].args[2]==17)")
+
+    def test_game_start_greeting_is_sent_once_to_all_chat(self):
+        self.check("B.script.OnGameStart(); B.script.OnUpdate(); clock=clock+.2; B.script.OnUpdate(); assert(#chats==1 and chats[1].channel=='All' and chats[1].message=='Удачи и веселой игры')")
 
     def test_special_values_only_queried_on_relevant_items(self):
         self.check("Ability.GetLevelSpecialValueFor=function() error('unrelated special query') end; hero.abilities[0]=ability('spirit_breaker_charge_of_darkness',8,99999,2); local s=B.adapter.refresh(); assert(B.capabilities['Ability.GetLevelSpecialValueFor']==nil)")

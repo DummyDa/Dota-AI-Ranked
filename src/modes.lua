@@ -505,7 +505,16 @@ return function(B)
         local a = M.groupTarget(s)
         if not a then return end
         local p = rear(s, a.pos, 320)
-        local desire = distance(s.hero.pos, p) > 600 and 0.30 or 0.12
+        local activity=0
+        for _,ally in pairs(s.allies or EMPTY) do
+            if realAlly(s,ally) and distance(ally.pos,a.pos)<1100
+                and (ally.attacking or ally.casting or ally.channeling or (ally.recentDamage or 0)>8) then
+                activity=activity+1
+            end
+        end
+        -- Idle proximity to teammates is not a task. Farm has priority until
+        -- the preferred anchor is actually grouping for an observed action.
+        local desire=activity>0 and (distance(s.hero.pos,p)>600 and 0.30 or 0.16) or 0.10
         offer(out, s, 'group', desire, move(s, p,
             'Stay in support range of the preferred allied group anchor'), a, p)
     end
@@ -577,27 +586,42 @@ return function(B)
     end
     local function farm(out, s)
         if gameTime(s) <= 600 or hp(s.hero) < 0.6 then return end
+        local offered=false
         for _, u in pairs(s.creeps or EMPTY) do
-            if enemy(s, u) and attackable(u) and distance(s.hero.pos, u.pos) < 1300 and quiet(s, u.pos) then
+            if enemy(s, u) and attackable(u) and distance(s.hero.pos, u.pos) < 2400 and quiet(s, u.pos) then
                 local reserved = false
                 for _, a in pairs(s.allies or EMPTY) do
                     if realAlly(s, a) and (a.role == nil or a.role <= 3) and distance(a.pos, u.pos) < 1500 then reserved = true end
                 end
-                if not reserved then offer(out, s, 'farm', 0.18, attack(s, u, 'Take spare lane farm away from allied cores', 1300), u) end
+                if not reserved then
+                    offer(out, s, 'farm', 0.34, attack(s, u,'Push spare lane farm away from allied cores',2400),u)
+                    offered=true
+                end
             end
         end
         for _,u in pairs(s.neutrals or EMPTY) do
-            if attackable(u) and distance(s.hero.pos,u.pos)<850 and quiet(s,u.pos)
+            if attackable(u) and distance(s.hero.pos,u.pos)<1800 and quiet(s,u.pos)
                 and not u.name:find('ancient') and not u.name:find('roshan') and not u.name:find('miniboss') then
                 local reserved=false
                 for _,a in ipairs(s.allies or EMPTY) do
                     if realAlly(s,a) and (a.role==nil or a.role<=3) and distance(a.pos,u.pos)<1500 then reserved=true end
                 end
-                if not reserved then offer(out,s,'farm',0.15,attack(s,u,'Take a nearby spare neutral camp',850),u) end
+                if not reserved then
+                    offer(out,s,'farm',0.31,attack(s,u,'Farm a nearby unreserved neutral camp',1800),u)
+                    offered=true
+                end
             end
         end
-        local p=B.map.lanePoint(s,B.map.classify(s.hero.pos))
-        offer(out,s,'lane',0.06,move(s,p,'Return toward the nearest lane while no team task is available'),nil,p,'late_lane')
+        local best,bestDistance
+        for _,laneName in ipairs({'top','mid','bot'}) do
+            local p=B.map.lanePoint(s,laneName)
+            local d=distance(s.hero.pos,p)
+            if not bestDistance or d<bestDistance then best,bestDistance=p,d end
+        end
+        if best then
+            offer(out,s,'farm',offered and 0.20 or 0.26,
+                move(s,best,'Move to the nearest lane for spare farm while the map is quiet'),nil,best,'late_lane')
+        end
     end
     function M.candidates(s)
         local out = {}

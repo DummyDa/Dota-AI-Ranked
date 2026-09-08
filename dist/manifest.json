@@ -1,66 +1,66 @@
 {
   "core": {
     "line": 31,
-    "sha256": "a22e4037765180f3076a052dd0299d09ca8350c2bc45b78ed58c3ee9b606a793"
+    "sha256": "2d1caa06d6bee254061aea8548605d6de2fab835dafcd3c979cf63eec0789b53"
   },
   "adapter": {
     "line": 105,
-    "sha256": "e8cf34d14e31bcc3096e44b61bad80f5188cac1e3f89496f9165228a0ee39ba3"
+    "sha256": "b60894dc35f42267fc5caf8391433b6a52fe643525ed66cf87e481c6a2e5aff1"
   },
   "map": {
-    "line": 320,
+    "line": 329,
     "sha256": "ddbd34bc37f0ae83adb69cd347f668ac7059c574966201aa623a1e4ee3c5eac0"
   },
   "threat": {
-    "line": 403,
+    "line": 412,
     "sha256": "4fd3da52ec9cef202d6183236caf2c1f5b80cf9a432b56ba162ad5ae95391db2"
   },
   "navigation": {
-    "line": 495,
+    "line": 504,
     "sha256": "8b40333f3ad77a438a3790d8d3bf5daeb5edd18a074df602842f667faebc625b"
   },
   "hero": {
-    "line": 565,
-    "sha256": "a9657dd32e416ffccd0f9588d20284baecb695502a810634a037643e957f6220"
+    "line": 574,
+    "sha256": "810c6702ed63128846da0536a82b0480f894403898e940f6cac900c8a8c03a35"
   },
   "items": {
-    "line": 999,
-    "sha256": "8a4fbaa232c4c76271111b043f4b7f9cd2024e7ba4b80a982b203684acf8ac0e"
+    "line": 1020,
+    "sha256": "f1062f19c8cb5c91d476a2fe612eeaf3e09e9550bcc73e7cd5821ee234a6359e"
   },
   "support": {
-    "line": 1515,
-    "sha256": "74e07b579b9b0729214f486ad09389d7f58024be8ae040ad59c1a0543eb48710"
+    "line": 1575,
+    "sha256": "a65d5f1889a749fe748893f676812e8ccdcc8a6f551432b8d749bed906afb922"
   },
   "modes": {
-    "line": 1728,
-    "sha256": "6bb2ac87ba1105d8011851088ce00260c2b6b3f822b2a2ac3cb7323fe9cc5058"
+    "line": 1828,
+    "sha256": "a828ee42d816ad08a7512696036a717df8e04f92a47598b00af8e7d4aa1d02e0"
   },
   "executor": {
-    "line": 2393,
-    "sha256": "34b9ccfe41125623c7c0dc4268ffeabe326fb2ba90e1a941ad165309561c8d86"
+    "line": 2517,
+    "sha256": "9322dce8bd86d505a70287f84acefc595323121366a8aebd38ffa4184575643b"
   },
   "arbiter": {
-    "line": 2566,
+    "line": 2699,
     "sha256": "8def2e7e8b60c0dda78486e1d60bf5dc383096651a2afcecb27046160921e756"
   },
   "api": {
-    "line": 2615,
+    "line": 2748,
     "sha256": "1f5e20e969153c80123c2f267329981082a34365a4827f3c3e4e8de6776458e4"
   },
   "json": {
-    "line": 2804,
+    "line": 2937,
     "sha256": "0a5bc57f2b5c2da7b3b896eb4d2542895650eab7cb8fc3b206cc4ccdff2a4103"
   },
   "bridge": {
-    "line": 3020,
+    "line": 3153,
     "sha256": "d318b3f840dcd736023d78cc5f61a47b4d6b381d39619224111905fd47960807"
   },
   "ui": {
-    "line": 3073,
+    "line": 3206,
     "sha256": "c32f1a1758cc077264a2f19c7628f87759249c00cbb5cb71885c9127e1af8304"
   },
   "main": {
-    "line": 3115,
-    "sha256": "ee2e41c3f81f526ff24e063e3602acda0abe4ca36f3b39cce8ee0f506716d634"
+    "line": 3248,
+    "sha256": "b0202961c94beb5ca0026c71e7fedda19bd84b0af971ae4a2e7ad64383fc710b"
   }
 }

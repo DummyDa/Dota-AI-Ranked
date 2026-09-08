@@ -72,7 +72,7 @@ return function(B)
         if B.dist(s.hero.pos,c.pos)>850 or B.dist(c.pos,e.pos)>700 or towerDanger(s,e.pos) then return false end
         local allies,foes=counts(s,e.pos,1000)
         local landing=B.toward(e.pos,s.hero.pos,math.max(90,s.hero.range-20))
-        return allies>=foes and creepsAt(s,landing)<=4
+        return allies>=foes and creepsAt(s,landing)<=2
     end
     local function patrolIntent(s)
         local anchor=B.map.coreOnLane(s,s.core) and B.toward(s.core.pos,B.map.home(s),260) or B.map.lanePoint(s,s.lane)
@@ -96,13 +96,43 @@ return function(B)
         if best then patrol={pos=best,anchor=anchor,untilTime=s.now+3.5}; return move(s,best,'Reposition along the safe side of the wave') end
     end
     local function trades(out,s)
-        local ongoing=false
-        for _,e in ipairs(s.enemies) do if S.localFight(s,e) then ongoing=true break end end
-        if trade and s.now<trade.backUntil and not ongoing then
-            offer(out,'trade_reset',0.72,move(s,B.threat.retreat(s),'Disengage after a short trade'),nil,'trade_reset')
-            return
+        if trade then
+            local target=B.find(s.enemies,trade.index)
+            if not enemy(s,target) then trade=nil
+            else
+                local allies,foes=counts(s,target.pos,1000)
+                local ownLoss=(trade.startHpPct or s.hero.hpPct)-s.hero.hpPct
+                local enemyLoss=(trade.targetHpPct or target.hpPct)-target.hpPct
+                local bad=s.now>=trade.expires or s.hero.hpPct<0.58 or s.hero.recentDamage>55
+                    or foes>allies or creepsAt(s,s.hero.pos)>=3 or towerDanger(s,target.pos)
+                    or (trade.hits>=1 and ownLoss>math.max(0.07,enemyLoss+0.04))
+                    or trade.hits>=3
+                if bad then
+                    trade.resetUntil=trade.resetUntil or (s.now+1.25)
+                    if s.now<trade.resetUntil then
+                        offer(out,'trade_reset',0.74,move(s,B.threat.retreat(s),
+                            'Disengage after completed or unfavorable lane trade'),target,'trade_reset:'..target.index)
+                        return
+                    end
+                    trade=nil
+                else
+                    local d=B.dist(s.hero.pos,target.pos)
+                    local i
+                    if d<=s.hero.range+35 and not s.hero.disarmed then
+                        i={kind='attack',target=target,reason='Continue profitable lane trade',tradeContinue=true}
+                    elseif d<1100 then
+                        local landing=B.toward(target.pos,s.hero.pos,math.max(90,s.hero.range-20))
+                        i=move(s,landing,'Keep closing distance for the active lane trade')
+                    end
+                    if i then
+                        i.tradeIndex=target.index
+                        offer(out,'harass',0.66,i,target,'support_trade:'..target.index)
+                        return
+                    end
+                    trade=nil
+                end
+            end
         end
-        if trade and s.now>trade.expires then trade=nil end
         for _,e in ipairs(s.enemies) do
             local d=B.dist(s.hero.pos,e.pos)
             if enemy(s,e) and not e.attackImmune and d<1100 and s.hero.hpPct>0.48 and not s.hero.disarmed and not towerDanger(s,e.pos) then
@@ -119,9 +149,11 @@ return function(B)
                 if allies>=foes and a>=f*(protect and 0.8 or 0.95) and (participating or setup or creepsAt(s,landing)<3)
                     and (protect or participating or (s.hero.hpPct>0.65 and s.hero.recentDamage<45)) then
                     local i
-                    if d<=s.hero.range+35 then i={kind='attack',target=e,reason=protect and 'Peel the attacker away from the core' or 'Short supported trade',trade=not participating}
+                    if d<=s.hero.range+35 then i={kind='attack',target=e,reason=protect and 'Peel the attacker away from the core' or 'Start supported lane trade'}
                     else i=move(s,landing,protect and 'Approach to peel the core' or 'Close distance for a short trade') end
-                    if i and setup and not protect and not participating then i.trade=true end
+                    if i and setup and not protect and not participating then
+                        i.tradeStart=true i.tradeIndex=e.index
+                    end
                     offer(out,protect and 'protect_core' or participating and 'fight' or 'harass',protect and 0.86 or participating and 0.76 or setup and 0.58 or 0.5,i,e,'support_trade:'..e.index)
                 end
             end
@@ -198,7 +230,15 @@ return function(B)
         return out
     end
     function S.issued(s,i)
-        if i.trade then trade={expires=s.now+4,backUntil=s.now+s.hero.attackPoint+1.6} end
+        if i.tradeStart then
+            local target=B.find(s.enemies,i.tradeIndex)
+            if target and (not trade or trade.index~=i.tradeIndex) then
+                trade={index=i.tradeIndex,expires=s.now+6,startHpPct=s.hero.hpPct,
+                    targetHpPct=target.hpPct,hits=i.kind=='attack' and 1 or 0}
+            elseif trade and i.kind=='attack' then trade.hits=trade.hits+1 end
+        elseif i.tradeContinue and trade and trade.index==i.tradeIndex then
+            trade.hits=trade.hits+1
+        end
         if i.gank then lastGank=s.now; gank={index=i.target.index,untilTime=s.now+18} end
         if i.wardSpot then wardAttempt[i.wardSpot]=s.now+12 end
     end

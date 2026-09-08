@@ -164,9 +164,19 @@ return function(B)
             local heroes, creeps = alliedCover(s, c)
             if enemy(s, c) and (c.hpPct or 0) > 0.45
                 and distance(s.hero, c) > 2500 and not towerDanger(s, c)
-                and (heroes >= 1 or creeps >= 2) and B.threat.safeEngage(s, c) then
+                and B.threat.safeEngage(s, c) then
                 local value = -distance(c, {pos=anchor}) / 1000 + heroes * 2 + creeps * 0.15
                 if not score or value > score then best, score = c, value end
+            end
+        end
+        if best then return best end
+        for _, n in ipairs(s.neutrals or {}) do
+            local name=n.name or ''
+            if enemy(s,n) and (n.hpPct or 0)>0.65 and distance(s.hero,n)>1800
+                and not name:find('ancient') and not name:find('roshan') and not name:find('miniboss')
+                and not towerDanger(s,n) and B.threat.safeEngage(s,n) then
+                local value=-distance(n,{pos=anchor})/1000
+                if not score or value>score then best,score=n,value end
             end
         end
         return best
@@ -174,7 +184,8 @@ return function(B)
 
     local function freeFarmChargeTarget(s, mode)
         local modeName = mode and mode.name or ''
-        if s.time < 600 or (modeName ~= 'farm' and modeName ~= 'lane' and modeName ~= 'idle')
+        if s.time < 600 or (modeName ~= 'farm' and modeName ~= 'lane' and modeName ~= 'idle'
+            and modeName ~= 'group')
             or mapFightActive(s) then return nil end
         for _, e in ipairs(s.enemies or {}) do
             if enemy(s, e) and distance(s.hero, e) < 1800 then return nil end
@@ -264,8 +275,9 @@ return function(B)
             local charge = abilities[chargeName]
             local tp = (s.items or {}).item_tpscroll
             local atBase = B.map and distance(h, {pos=B.map.home(s)}) <= 1100
-            local tpOnCooldown = tp and type(tp.cooldown) == 'number' and tp.cooldown > 0.1
-            if atBase and tpOnCooldown then
+            local tpUnavailable = not tp or (tp.charges or 0)<1
+                or (type(tp.cooldown) == 'number' and tp.cooldown > 0.1)
+            if atBase and tpUnavailable then
                 local target = baseChargeTarget(s)
                 if target and not h.rooted and ready(s, charge, 'target', target) then
                     local i = cast(charge, target, 'Leave base via Charge while TP is on cooldown', 90)

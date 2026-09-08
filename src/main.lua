@@ -1,9 +1,31 @@
 return function(B)
     local nextDecision=0
+    local greeted=false
     local function reset()
         B.adapter.reset() B.navigation.reset() B.arbiter.reset() B.executor.reset()
         B.items.reset() B.hero.reset() B.api.cancel() B.bridge.reset()
-        B.state=nil nextDecision=0 B.error=nil
+        B.state=nil nextDecision=0 B.error=nil greeted=false
+    end
+    local function greet(s)
+        if greeted or not s or type(s.time)~='number' or s.time<0 then return end
+        greeted=true
+        -- A hot reload during an existing match must not produce a late greeting.
+        if s.time>45 then return end
+        local channels=B.call('Chat','GetChannels',{})
+        local selected
+        for _,channel in pairs(channels or {}) do
+            if type(channel)=='string' then
+                local name=channel:lower():gsub('[%s_%-]','')
+                if name=='all' or name=='allchat' or name=='global' then selected=channel; break end
+            end
+        end
+        if not selected then
+            B.log('chat.channel','All-chat channel unavailable; greeting skipped',30)
+            return
+        end
+        local ok,err=pcall(B.libs.Chat.Say,selected,'Удачи и веселой игры')
+        if ok then B.log('chat.greeting','Sent one all-chat greeting',0)
+        else B.log('chat.error','Chat.Say: '..tostring(err),30) end
     end
     function B.setEnabled(value)
         if B.enabled==value then return end
@@ -31,6 +53,7 @@ return function(B)
         end
         local s=B.state
         if not s or not s.hero.alive or not B.enabled then return end
+        greet(s)
         B.log('status','Active pos '..s.role..' ('..tostring(s.laneSelectionFlags)..') | orders '..B.executor.count,15)
         B.executor.poll(s)
         -- Small cached-state safety scan every callback. Full decisions at 8.3Hz.
@@ -49,6 +72,8 @@ return function(B)
             if B.executor.execute(s,micro) then return end
         end
         if full and not emergency then
+            local cleanup=B.items.cleanup(s)
+            if cleanup and B.executor.execute(s,cleanup) then return end
             local purchase=B.items.purchase(s)
             if purchase then B.executor.execute(s,purchase) end
             if not B.executor.pending then

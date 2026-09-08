@@ -1,5 +1,5 @@
 return function(B)
-    B.version = '0.1.7-bara-items-grouping'
+    B.version = '0.1.8-idle-farm-trading'
     B.config = {laningEnd=600, decisionInterval=0.12, modeHold=1.2,
         externalEnabled=false, bridgeEnabled=false, botEnabled=true, debug=true,
         lowHpChargeThreshold=0.25}
@@ -8,7 +8,7 @@ return function(B)
     B.libs={Entity=Entity,NPC=NPC,Hero=Hero,Heroes=Heroes,Players=Players,Player=Player,
         NPCs=NPCs,Ability=Ability,Item=Item,Modifier=Modifier,Tower=Tower,Runes=Runes,Rune=Rune,
         Camps=Camps,Camp=Camp,Couriers=Couriers,LinearProjectiles=LinearProjectiles,
-        GridNav=GridNav,GameRules=GameRules,Engine=Engine}
+        GridNav=GridNav,GameRules=GameRules,Engine=Engine,Chat=Chat}
     B.logs, B.capabilities = {}, {}
     function B.log(key, message, interval)
         local now = B.state and B.state.now or (os and os.clock and os.clock() or 0)

@@ -78,7 +78,8 @@ return function(B)
                 if not B.call('Entity','IsAlive',false,target.handle) then return false end
             end
         end
-        local key=kind..':'..tostring(target and target.index or '')..':'..tostring(intent.ability and intent.ability.name or '')
+        local key=kind..':'..tostring(target and target.index or '')..':'
+            ..tostring(intent.ability and intent.ability.name or intent.item and intent.item.name or '')
         if kind=='move' then
             local p=B.navigation.next(s,intent.pos,intent.allowTower,intent.emergency)
             if not p then return false end
@@ -88,7 +89,15 @@ return function(B)
             end
             return false
         end
-        if kind=='hold' then
+        if kind=='sell' then
+            local item=intent.item
+            if not item or not item.handle or type(item.slot)~='number' or item.slot<0 or item.slot>5 then return false end
+            if (item.name or ''):find('boots',1,true) then return false end
+            if B.dist(s.hero.pos,B.map.home(s))>1100 then return false end
+            if not B.call('Item','IsSellable',false,item.handle) then return false end
+            if not order(s,'DOTA_UNIT_ORDER_SELL_ITEM',nil,nil,item.handle) then return false end
+            E.lockUntil=s.now+0.2
+        elseif kind=='hold' then
             if E.lastKey==key and s.now-E.lastAt<0.7 then return false end
             if not invoke('Player','HoldPosition',s.player,s.hero.handle,false,false,false,'spirit_breaker_bot') then return false end
         elseif kind=='attack' then
