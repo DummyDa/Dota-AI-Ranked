@@ -19,8 +19,8 @@ core=unit(2,'npc_dota_hero_juggernaut',2,1000,-5000)
 core.roleFlags=1
 hero.roleFlags=16
 world={hero,core}
-player={hero=hero}
-corePlayer={hero=core}
+player={hero=hero,id=0,name='OpenAI bot'}
+corePlayer={hero=core,id=1,name='Carry'}
 local function record(kind,...) orders[#orders+1]={kind=kind,args={...}} end
 Engine={SetQuickBuy=function(name,reset) record('quickbuy',name,reset) end,
     ExecuteCommand=function(command) record('command',command) end}
@@ -28,6 +28,7 @@ GameRules={GetGameTime=function() return clock end,GetDOTATime=function() return
 Heroes={GetLocal=function() return hero end}
 Players={GetLocal=function() return player end,GetAll=function() return {player,corePlayer} end}
 Player={GetTeamData=function(p) return {lane_selection_flags=p.hero.roleFlags} end,
+    GetPlayerID=function(p) return p.id end,GetName=function(p) return p.name end,
     GetAssignedHero=function(p) return p.hero end,
     PrepareUnitOrders=function(...) record('order',...) end,
     AttackTarget=function(...) record('attack',...) end,

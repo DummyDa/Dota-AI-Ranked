@@ -5,6 +5,7 @@ return function(B)
     local function reset()
         B.adapter.reset() B.navigation.reset() B.arbiter.reset() B.executor.reset()
         B.items.reset() B.hero.reset() B.api.cancel() B.bridge.reset()
+        if B.chatVoice then B.chatVoice.reset() end
         B.state=nil nextDecision=0 B.error=nil
         greeted,greetingNext=false,0
         B.chatStatus='waiting' B.chatSent=false
@@ -53,7 +54,9 @@ return function(B)
             B.state=B.adapter.refresh()
         end
         local s=B.state
-        if not s or not s.hero.alive or not B.enabled then return end
+        if not s or not B.enabled then return end
+        if B.chatVoice then B.chatVoice.tick(s) end
+        if not s.hero.alive then return end
         greet(s)
         B.log('status','Active pos '..s.role..' ('..tostring(s.laneSelectionFlags)..') | orders '..B.executor.count,15)
         B.executor.poll(s)
@@ -103,8 +106,12 @@ return function(B)
     function B.script.OnProjectile(p)
         if B.adapter.projectile then B.adapter.projectile(p) end
     end
+    function B.script.OnPostReceivedNetMessage(msg)
+        if B.chatVoice then return B.chatVoice.onNetMessage(msg) end
+        return true
+    end
     function B.script.OnGameStart() reset() B.enabled=B.config.botEnabled end
     function B.script.OnGameEnd() reset() end
-    function B.script.OnScriptUnload() B.executor.stop(B.state) if DotaAI==B.public then DotaAI=nil end end
+    function B.script.OnScriptUnload() B.executor.stop(B.state) if B.chatVoice then B.chatVoice.reset() end if DotaAI==B.public then DotaAI=nil end end
     B.log('loaded','Loaded autonomous controller; recorder OFF, external OFF',0)
 end

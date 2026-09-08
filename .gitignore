@@ -9,6 +9,8 @@
 *.py[cod]
 /.npm-cache-lua/
 /node_modules/
+/.venv-tts/
+/models/piper/
 /.pytest_cache/
 /.coverage
 

@@ -1,7 +1,7 @@
 {
   "core": {
     "line": 31,
-    "sha256": "4c7aeb459acf07090b124a3d6196593ee3625feef405a39ddccedebfb6efbba7"
+    "sha256": "ce43bbcd508e083a61fbccd90196b747151639319ad5f3b2dcaf599d46acdd68"
   },
   "adapter": {
     "line": 105,
@@ -55,12 +55,16 @@
     "line": 3215,
     "sha256": "d318b3f840dcd736023d78cc5f61a47b4d6b381d39619224111905fd47960807"
   },
-  "ui": {
+  "chat": {
     "line": 3268,
-    "sha256": "09ffe83b49181b7fde79b0188e565da09c7442afe94137780b32de35f3ae6702"
+    "sha256": "4ebbfa891b6fe9582c50b9cd92709a0a25c66363f23dd86ed8d3155bbf1373d8"
+  },
+  "ui": {
+    "line": 3383,
+    "sha256": "6e63d10837518952abae0e4310302419c9bba0162ef9f6be4fc880e0b6b66017"
   },
   "main": {
-    "line": 3313,
-    "sha256": "699602e0ebf35d386cfa6fffc2a174e295c2a0247cc61c04c4f116fdf4837e67"
+    "line": 3429,
+    "sha256": "21b811ec97e3f056dc22c62803123db74496bc57336beac78461d46927090e74"
   }
 }

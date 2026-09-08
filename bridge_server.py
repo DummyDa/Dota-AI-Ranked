@@ -14,6 +14,7 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from typing import Any
 
+from chat_responder import ChatResponder
 from macro_openai import OpenAIMacroPolicy
 
 
@@ -414,6 +415,10 @@ class BridgeHandler(BaseHTTPRequestHandler):
     def bridge(self) -> BridgeState:
         return self.server.bridge  # type: ignore[attr-defined]
 
+    @property
+    def chat_responder(self) -> ChatResponder | None:
+        return self.server.chat_responder  # type: ignore[attr-defined]
+
     def log_message(self, fmt: str, *args: Any) -> None:
         logging.info("%s - %s", self.client_address[0], fmt % args)
 
@@ -437,7 +442,9 @@ class BridgeHandler(BaseHTTPRequestHandler):
 
     def do_GET(self) -> None:
         if self.path in {"/health", "/v1/status"}:
-            self._send(HTTPStatus.OK, self.bridge.status())
+            status = self.bridge.status()
+            status["chatResponder"] = self.chat_responder.status() if self.chat_responder else {"enabled": False}
+            self._send(HTTPStatus.OK, status)
             return
         self._send(HTTPStatus.NOT_FOUND, {"ok": False, "error": "not found"})
 
@@ -462,6 +469,21 @@ class BridgeHandler(BaseHTTPRequestHandler):
                     self.bridge.observe_only = bool(payload.get("observeOnly", True))
                 self._send(HTTPStatus.OK, self.bridge.status())
                 return
+            if self.path == "/v1/chat":
+                if not self.chat_responder:
+                    self._send(HTTPStatus.SERVICE_UNAVAILABLE, {"ok": False, "error": "chat responder disabled"})
+                    return
+                accepted = self.chat_responder.submit(payload)
+                self._send(HTTPStatus.ACCEPTED, {"ok": accepted})
+                return
+            if self.path == "/v1/voice/poll":
+                voice = self.chat_responder.poll_voice() if self.chat_responder else {"ready": False}
+                self._send(HTTPStatus.OK, {"ok": True, **voice})
+                return
+            if self.path == "/v1/voice/start":
+                started = bool(self.chat_responder and self.chat_responder.start_voice(str(payload.get("id", ""))))
+                self._send(HTTPStatus.OK if started else HTTPStatus.CONFLICT, {"ok": started})
+                return
             self._send(HTTPStatus.NOT_FOUND, {"ok": False, "error": "not found"})
         except (ValueError, TypeError, json.JSONDecodeError) as exc:
             self._send(HTTPStatus.BAD_REQUEST, {"ok": False, "error": str(exc)})
@@ -473,9 +495,11 @@ class BridgeHandler(BaseHTTPRequestHandler):
 class BridgeHTTPServer(ThreadingHTTPServer):
     daemon_threads = True
 
-    def __init__(self, address: tuple[str, int], bridge: BridgeState) -> None:
+    def __init__(self, address: tuple[str, int], bridge: BridgeState,
+                 chat_responder: ChatResponder | None = None) -> None:
         super().__init__(address, BridgeHandler)
         self.bridge = bridge
+        self.chat_responder = chat_responder
 
 
 def parse_args() -> argparse.Namespace:
@@ -490,6 +514,12 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--openai-macro", action="store_true", help="enable periodic OpenAI macro decisions")
     parser.add_argument("--openai-model", default=os.environ.get("OPENAI_MODEL"))
     parser.add_argument("--macro-interval", type=float, default=10.0)
+    parser.add_argument("--chat-responder", action="store_true",
+                        help="analyze received player chat and answer allies through local TTS")
+    parser.add_argument("--openrouter-model", default=os.environ.get("OPENROUTER_MODEL", "qwen/qwen3.7-flash"))
+    parser.add_argument("--piper-model", type=Path,
+                        default=Path("models/piper/ru_RU-dmitri-medium.onnx"))
+    parser.add_argument("--tts-device", default=os.environ.get("DOTA_TTS_OUTPUT_DEVICE", "Voicemod"))
     return parser.parse_args()
 
 
@@ -502,7 +532,14 @@ def main() -> None:
         snapshot_interval=args.snapshot_interval,
     )
     bridge = BridgeState(recorder, observe_only=not args.execute)
-    server = BridgeHTTPServer((args.host, args.port), bridge)
+    chat_responder = None
+    if args.chat_responder:
+        chat_responder = ChatResponder(
+            model=args.openrouter_model,
+            piper_model=args.piper_model.resolve(),
+            device_hint=args.tts_device,
+        )
+    server = BridgeHTTPServer((args.host, args.port), bridge, chat_responder=chat_responder)
     macro_worker = None
     if args.openai_macro:
         macro_worker = MacroWorker(

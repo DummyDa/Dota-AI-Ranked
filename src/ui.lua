@@ -30,8 +30,9 @@ return function(B)
             or ('pos '..B.state.role..' | lv '..B.state.hero.level..' | '..(B.arbiter.active and B.arbiter.active.name or 'ready'))
         Render.Text(U.font,12,status,Vec2(U.x,U.y+44),Color(240,240,240))
         if B.state then Render.Text(U.font,12,'Shop: '..(B.items.status or 'waiting'),Vec2(U.x,U.y+59),Color(240,220,160)) end
+        if B.state then Render.Text(U.font,12,'Voice: '..(B.voiceStatus or 'idle'),Vec2(U.x,U.y+74),Color(190,225,255)) end
         if B.state and not B.chatSent then
-            Render.Text(U.font,12,'Chat: '..(B.chatStatus or 'waiting'),Vec2(U.x,U.y+74),Color(220,220,240))
+            Render.Text(U.font,12,'Chat: '..(B.chatStatus or 'waiting'),Vec2(U.x,U.y+89),Color(220,220,240))
         end
     end
 end

@@ -1,5 +1,19 @@
 # Dota AI Ranked
 
+## Optional voice chat responder
+
+The autonomous Lua bot does not require a server. To let it analyze match chat
+with the low-cost `qwen/qwen3.7-flash` OpenRouter model and answer allied
+messages through local Piper TTS:
+
+1. Run `setup_voice.ps1` once.
+2. Select `Microphone (Voicemod Virtual Audio Device)` as Dota's voice input.
+3. Run `configure_openrouter.bat` and paste a newly-created OpenRouter key.
+4. Keep `start_voice_bridge.bat` open while playing.
+
+The API key is read from `OPENROUTER_API_KEY`; it is never stored in this
+repository. Incoming player chat is sent to OpenRouter for classification.
+
 Experimental autonomous Spirit Breaker support/hard-support controller for the
 Umbrella Lua API. The controller is rule-based and runs without Python, an LLM,
 or a local neural network. A separate optional bridge and human-play recorder
@@ -31,7 +45,7 @@ Requirements for development: Python 3, Node.js and `luaparse`. Runtime needs
 only Umbrella.
 
 ```powershell
-python -m unittest test_bot test_bridge test_recorder
+python -m unittest test_bot test_bridge test_recorder test_chat_responder
 python build_bot.py
 ```
 

@@ -291,6 +291,15 @@ class BotTest(unittest.TestCase):
     def test_game_start_greeting_does_not_use_dashboard_chat_channels(self):
         self.check("Chat.Say=function() error('dashboard chat must not be used') end; B.script.OnGameStart(); B.script.OnUpdate(); local found=false; for _,o in ipairs(orders) do if o.kind=='command' then found=true end end; assert(B.chatSent and found)")
 
+    def test_allied_match_chat_is_forwarded_with_identity(self):
+        self.check("B.script.OnUpdate(); local body; HTTP.Request=function(method,url,opts,cb) assert(url:find('/v1/chat')); body=B.json:decode(opts.data); cb({code=202,response='{\\\"ok\\\":true}'}) end; B.chatVoice.handleDecoded({source_player_id=1,channel_type=12,message_text='bara go top'}); assert(body and body.isAlly and not body.isSelf and body.sourceName=='Carry' and body.localName=='OpenAI bot' and body.messageText=='bara go top')")
+
+    def test_enemy_chat_is_forwarded_but_cannot_be_marked_ally(self):
+        self.check("local enemy=unit(9,'npc_dota_hero_lina',3,0,0); local enemyPlayer={hero=enemy,id=2,name='Enemy'}; Players.GetAll=function() return {player,corePlayer,enemyPlayer} end; B.script.OnUpdate(); local body; HTTP.Request=function(method,url,opts,cb) body=B.json:decode(opts.data); cb({code=202,response='{}'}) end; B.chatVoice.handleDecoded({source_player_id=2,channel_type=11,message_text='hello'}); assert(body and body.isAlly==false and body.sourceName=='Enemy')")
+
+    def test_ready_voice_job_opens_and_closes_voice_recording(self):
+        self.check("B.script.OnUpdate(); B.chatVoice.listenUntil=clock+60; local polls=0; HTTP.Request=function(method,url,opts,cb) if url:find('/poll') then polls=polls+1; if polls==1 then cb({code=200,response='{\\\"ready\\\":true,\\\"id\\\":\\\"v1\\\",\\\"text\\\":\\\"go\\\",\\\"duration\\\":0.5}'}) else cb({code=200,response='{\\\"ready\\\":false}'}) end else cb({code=200,response='{\\\"ok\\\":true}'}) end end; B.chatVoice.tick(B.state); assert(B.chatVoice.recording); assert(orders[#orders].kind=='command' and orders[#orders].args[1]=='+voicerecord'); B.chatVoice.tick({now=B.state.now+1}); assert(not B.chatVoice.recording and orders[#orders].args[1]=='-voicerecord')")
+
     def test_special_values_only_queried_on_relevant_items(self):
         self.check("Ability.GetLevelSpecialValueFor=function() error('unrelated special query') end; hero.abilities[0]=ability('spirit_breaker_charge_of_darkness',8,99999,2); local s=B.adapter.refresh(); assert(B.capabilities['Ability.GetLevelSpecialValueFor']==nil)")
 

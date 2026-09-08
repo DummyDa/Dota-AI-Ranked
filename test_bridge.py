@@ -5,6 +5,7 @@ import tempfile
 import threading
 import unittest
 from pathlib import Path
+from urllib.error import HTTPError
 from urllib.request import Request, urlopen
 
 from bridge_server import BridgeHTTPServer, BridgeState, Command, MacroGoal, Recorder
@@ -147,6 +148,20 @@ class BridgeTest(unittest.TestCase):
                                      "source": "sampled_held_right_click"}}),
         ])
         self.assertEqual(len(values), 2)
+
+    def test_disabled_chat_responder_returns_service_unavailable(self) -> None:
+        request = Request(
+            self.base + "/v1/chat",
+            data=json.dumps({"messageText": "hello"}).encode(),
+            headers={"Content-Type": "application/json"},
+            method="POST",
+        )
+        with self.assertRaises(HTTPError) as raised:
+            urlopen(request, timeout=2)
+        try:
+            self.assertEqual(raised.exception.code, 503)
+        finally:
+            raised.exception.close()
 
 
 if __name__ == "__main__":

@@ -10,7 +10,7 @@ from datetime import datetime
 
 ROOT = Path(__file__).resolve().parent
 MODULES = ('core', 'adapter', 'map', 'threat', 'navigation', 'hero', 'items',
-           'support', 'modes', 'executor', 'arbiter', 'api', 'json', 'bridge', 'ui', 'main')
+           'support', 'modes', 'executor', 'arbiter', 'api', 'json', 'bridge', 'chat', 'ui', 'main')
 
 def bundle() -> Path:
     license_text = (ROOT / 'OPENHYPERAI_LICENSE').read_text(encoding='utf-8')
