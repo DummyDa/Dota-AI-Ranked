@@ -286,10 +286,10 @@ class BotTest(unittest.TestCase):
         self.check("clock=1100; for slot,name in ipairs({'item_phase_boots','item_magic_wand','item_ward_observer','item_dust','item_smoke_of_deceit','item_tango'}) do hero.items[slot-1]=ability(name,4,0,0) end; hero.items[6]=ability('item_silver_edge',4,0,0); local s=B.adapter.refresh(); local i=B.items.cleanup(s); assert(i and i.kind=='move_item' and i.swap and i.item.name=='item_silver_edge'); assert(i.destinationSlot~=0); assert(B.executor.execute(s,i))")
 
     def test_game_start_greeting_is_sent_once_to_all_chat(self):
-        self.check("B.script.OnGameStart(); B.script.OnUpdate(); clock=clock+.2; B.script.OnUpdate(); assert(#chats==1 and chats[1].channel=='All' and chats[1].message=='Удачи и веселой игры')")
+        self.check("B.script.OnGameStart(); B.script.OnUpdate(); clock=clock+.2; B.script.OnUpdate(); local n=0; for _,o in ipairs(orders) do if o.kind=='command' then n=n+1; assert(o.args[1]=='say \\\"\u0423\u0434\u0430\u0447\u0438 \u0438 \u0432\u0435\u0441\u0435\u043b\u043e\u0439 \u0438\u0433\u0440\u044b\\\"') end end; assert(n==1)")
 
-    def test_game_start_greeting_uses_direct_all_when_channel_list_is_empty(self):
-        self.check("Chat.GetChannels=function() return {} end; B.script.OnGameStart(); B.script.OnUpdate(); assert(#chats==1 and chats[1].channel=='All')")
+    def test_game_start_greeting_does_not_use_dashboard_chat_channels(self):
+        self.check("Chat.Say=function() error('dashboard chat must not be used') end; B.script.OnGameStart(); B.script.OnUpdate(); local found=false; for _,o in ipairs(orders) do if o.kind=='command' then found=true end end; assert(B.chatSent and found)")
 
     def test_special_values_only_queried_on_relevant_items(self):
         self.check("Ability.GetLevelSpecialValueFor=function() error('unrelated special query') end; hero.abilities[0]=ability('spirit_breaker_charge_of_darkness',8,99999,2); local s=B.adapter.refresh(); assert(B.capabilities['Ability.GetLevelSpecialValueFor']==nil)")

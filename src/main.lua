@@ -1,47 +1,31 @@
 return function(B)
     local nextDecision=0
-    local greeted,greetingNext,greetingAttempts=false,0,0
+    local greeted,greetingNext=false,0
     B.chatStatus='waiting' B.chatSent=false
     local function reset()
         B.adapter.reset() B.navigation.reset() B.arbiter.reset() B.executor.reset()
         B.items.reset() B.hero.reset() B.api.cancel() B.bridge.reset()
         B.state=nil nextDecision=0 B.error=nil
-        greeted,greetingNext,greetingAttempts=false,0,0
+        greeted,greetingNext=false,0
         B.chatStatus='waiting' B.chatSent=false
     end
     local function greet(s)
         if greeted or not s or type(s.time)~='number' or s.time<0
             or type(s.now)~='number' or s.now<greetingNext then return end
         greetingNext=s.now+2
-        greetingAttempts=greetingAttempts+1
-        local channels=B.call('Chat','GetChannels',{})
-        local selected
-        local names={}
-        for _,channel in pairs(channels or {}) do
-            if type(channel)=='string' then
-                names[#names+1]=channel
-                local name=channel:lower():gsub('[%s_%-]','')
-                if name=='all' or name=='allchat' or name=='global' or name=='public'
-                    or name=='общий' or name=='всем' then selected=channel; break end
-            end
+        -- Chat.Say targets the dashboard/GC channel list, not Dota's live
+        -- match chat. Umbrella exposes the same console path that Dota uses:
+        -- `say` is all-chat and `say_team` is allied chat.
+        if not B.libs.Engine or type(B.libs.Engine.ExecuteCommand)~='function' then
+            B.chatStatus='Engine.ExecuteCommand unavailable' return
         end
-        if not selected then
-            -- GetChannels is observed to stay empty in a live private lobby.
-            -- Chat.Say accepts a channel name directly, so use the standard
-            -- all-chat name instead of waiting forever for discovery metadata.
-            selected='All'
-            B.log('chat.channel','Channel list empty; trying direct All channel',5)
-        end
-        if not B.libs.Chat or type(B.libs.Chat.Say)~='function' then
-            B.chatStatus='Chat.Say unavailable' return
-        end
-        local ok,err=pcall(B.libs.Chat.Say,selected,'Удачи и веселой игры')
+        local ok,err=pcall(B.libs.Engine.ExecuteCommand,'say "Удачи и веселой игры"')
         if ok then
-            greeted=true B.chatSent=true B.chatStatus='sent to '..selected
-            B.log('chat.greeting','Sent one all-chat greeting to '..selected,0)
+            greeted=true B.chatSent=true B.chatStatus='all-chat command sent'
+            B.log('chat.greeting','Executed one all-chat greeting with Engine.ExecuteCommand',0)
         else
             B.chatStatus='send failed; retrying'
-            B.log('chat.error','Chat.Say: '..tostring(err),5)
+            B.log('chat.error','Engine.ExecuteCommand: '..tostring(err),5)
         end
     end
     function B.setEnabled(value)

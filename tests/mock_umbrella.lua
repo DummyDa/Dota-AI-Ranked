@@ -22,7 +22,8 @@ world={hero,core}
 player={hero=hero}
 corePlayer={hero=core}
 local function record(kind,...) orders[#orders+1]={kind=kind,args={...}} end
-Engine={SetQuickBuy=function(name,reset) record('quickbuy',name,reset) end}
+Engine={SetQuickBuy=function(name,reset) record('quickbuy',name,reset) end,
+    ExecuteCommand=function(command) record('command',command) end}
 GameRules={GetGameTime=function() return clock end,GetDOTATime=function() return clock-90 end}
 Heroes={GetLocal=function() return hero end}
 Players={GetLocal=function() return player end,GetAll=function() return {player,corePlayer} end}
