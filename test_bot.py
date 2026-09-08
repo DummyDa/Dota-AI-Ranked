@@ -196,8 +196,11 @@ class BotTest(unittest.TestCase):
     def test_low_hp_charge_requires_mana_and_cooldown(self):
         self.check("local e=unit(3,'npc_dota_hero_lina',3,4500,4500); e.hp=200; world={hero,core,e}; local q=ability('spirit_breaker_charge_of_darkness',8,0,2); hero.abilities[0]=q; hero.mana=20; local s=B.adapter.refresh(); assert(not B.hero.consider(s,{name='patrol'})); hero.mana=500; q.cooldown=10; s=B.adapter.refresh(); assert(not B.hero.consider(s,{name='patrol'}))")
 
-    def test_low_hp_charge_ignores_fog_and_retreat(self):
-        self.check("local e=unit(3,'npc_dota_hero_lina',3,4500,4500); e.hp=100; e.visible=false; world={hero,core,e}; hero.abilities[0]=ability('spirit_breaker_charge_of_darkness',8,0,2); local s=B.adapter.refresh(); assert(not B.hero.consider(s,{name='patrol'})); e.visible=true; s=B.adapter.refresh(); assert(not B.hero.consider(s,{name='SAFETY'}))")
+    def test_low_hp_charge_ignores_fog_but_overrides_retreat_when_eligible(self):
+        self.check("local e=unit(3,'npc_dota_hero_lina',3,4500,4500); e.hp=100; e.visible=false; world={hero,core,e}; hero.abilities[0]=ability('spirit_breaker_charge_of_darkness',8,0,2); local s=B.adapter.refresh(); assert(not B.hero.consider(s,{name='patrol'})); e.visible=true; s=B.adapter.refresh(); local i=B.hero.consider(s,{name='SAFETY'}); assert(i and i.lowHpFinisher and i.forceCharge)")
+
+    def test_low_hp_charge_health_gate_changes_at_ten_minutes(self):
+        self.check("hero.hp=500; local e=unit(3,'npc_dota_hero_lina',3,4500,4500); e.hp=100; world={hero,core,e}; hero.abilities[0]=ability('spirit_breaker_charge_of_darkness',8,0,2); local s=B.adapter.refresh(); assert(not B.hero.consider(s,{name='patrol'})); hero.hp=501; s=B.adapter.refresh(); assert(B.hero.consider(s,{name='patrol'}).lowHpFinisher); clock=800; hero.hp=100; s=B.adapter.refresh(); assert(B.hero.consider(s,{name='SAFETY'}).lowHpFinisher)")
 
     def test_base_charge_uses_safe_creep_when_tp_on_cooldown(self):
         self.check("hero.pos=Vector(-7050,-6550,0); local q=ability('spirit_breaker_charge_of_darkness',8,0,2); local tp=ability('item_tpscroll',16,99999,0); tp.cooldown=20; hero.abilities[0]=q; hero.items[15]=tp; core.pos=Vector(1000,-5000,0); local c=unit(3,'npc_dota_creep_badguys_melee',3,1200,-5000); local cover1=unit(4,'npc_dota_creep_goodguys_melee',2,1000,-5000); local cover2=unit(5,'npc_dota_creep_goodguys_melee',2,1050,-5000); world={hero,core,c,cover1,cover2}; local s=B.adapter.refresh(); local i=B.hero.consider(s,{name='lane'}); assert(i and i.baseExitCharge and i.target.index==3); assert(B.executor.execute(s,i))")
@@ -273,14 +276,20 @@ class BotTest(unittest.TestCase):
     def test_faerie_fire_is_used_under_lethal_pressure(self):
         self.check("hero.hp=250; hero.items[0]=ability('item_faerie_fire',4,0,0); local e=unit(3,'npc_dota_hero_lina',3,-6300,-6200); world={hero,core,e}; local s=B.adapter.refresh(); s.hero.recentDamage=100; local i=B.items.consider(s,{name='fight'}); assert(i and i.ability.name=='item_faerie_fire' and i.priority==97)")
 
-    def test_obsolete_branch_is_sold_only_from_full_inventory_at_fountain(self):
-        self.check("clock=1100; hero.pos=Vector(-7050,-6550,0); for slot,name in ipairs({'item_phase_boots','item_branches','item_faerie_fire','item_tango','item_invis_sword','item_yasha_and_kaya'}) do hero.items[slot-1]=ability(name,4,0,0) end; local s=B.adapter.refresh(); local i=B.items.cleanup(s); assert(i and i.kind=='sell' and i.item.name=='item_branches'); assert(B.executor.execute(s,i)); assert(orders[#orders].kind=='order' and orders[#orders].args[2]==17)")
+    def test_obsolete_branch_is_dropped_from_full_inventory(self):
+        self.check("clock=1100; hero.pos=Vector(2000,-3000,0); for slot,name in ipairs({'item_phase_boots','item_branches','item_faerie_fire','item_tango','item_invis_sword','item_yasha_and_kaya'}) do hero.items[slot-1]=ability(name,4,0,0) end; local s=B.adapter.refresh(); local i=B.items.cleanup(s); assert(i and i.kind=='drop' and i.item.name=='item_branches'); assert(B.executor.execute(s,i)); assert(orders[#orders].kind=='order' and orders[#orders].args[2]==12)")
+
+    def test_important_backpack_item_moves_to_free_active_slot(self):
+        self.check("clock=1100; for slot,name in ipairs({'item_phase_boots','item_tango','item_magic_wand','item_ward_observer','item_dust'}) do hero.items[slot-1]=ability(name,4,0,0) end; hero.items[6]=ability('item_silver_edge',4,0,0); local s=B.adapter.refresh(); local i=B.items.cleanup(s); assert(i and i.kind=='move_item' and i.destinationSlot==5 and i.item.name=='item_silver_edge'); assert(B.executor.execute(s,i)); assert(orders[#orders].args[2]==19 and orders[#orders].args[3]==5)")
+
+    def test_important_backpack_item_swaps_with_lower_priority_active_item(self):
+        self.check("clock=1100; for slot,name in ipairs({'item_phase_boots','item_magic_wand','item_ward_observer','item_dust','item_smoke_of_deceit','item_tango'}) do hero.items[slot-1]=ability(name,4,0,0) end; hero.items[6]=ability('item_silver_edge',4,0,0); local s=B.adapter.refresh(); local i=B.items.cleanup(s); assert(i and i.kind=='move_item' and i.swap and i.item.name=='item_silver_edge'); assert(i.destinationSlot~=0); assert(B.executor.execute(s,i))")
 
     def test_game_start_greeting_is_sent_once_to_all_chat(self):
         self.check("B.script.OnGameStart(); B.script.OnUpdate(); clock=clock+.2; B.script.OnUpdate(); assert(#chats==1 and chats[1].channel=='All' and chats[1].message=='Удачи и веселой игры')")
 
-    def test_game_start_greeting_retries_until_channels_exist(self):
-        self.check("local calls=0; Chat.GetChannels=function() calls=calls+1; if calls<2 then return {} end return {'All','Team'} end; B.script.OnGameStart(); B.script.OnUpdate(); assert(#chats==0); clock=clock+2.1; B.script.OnUpdate(); assert(#chats==1 and calls==2)")
+    def test_game_start_greeting_uses_direct_all_when_channel_list_is_empty(self):
+        self.check("Chat.GetChannels=function() return {} end; B.script.OnGameStart(); B.script.OnUpdate(); assert(#chats==1 and chats[1].channel=='All')")
 
     def test_special_values_only_queried_on_relevant_items(self):
         self.check("Ability.GetLevelSpecialValueFor=function() error('unrelated special query') end; hero.abilities[0]=ability('spirit_breaker_charge_of_darkness',8,99999,2); local s=B.adapter.refresh(); assert(B.capabilities['Ability.GetLevelSpecialValueFor']==nil)")

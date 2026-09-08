@@ -322,16 +322,52 @@ return function(B)
         return nil
     end
 
-    -- Inventory maintenance is deliberately conservative. Selling is attempted
-    -- only at our fountain, outside combat, and only when all six active slots
-    -- are occupied. Boots and sustain consumables are never selected here.
+    -- Keep important usable items out of backpack. If all six active slots are
+    -- occupied, discard obsolete cheap clutter first; boots and Tango are never
+    -- discarded. Manipulation is deferred while enemies or damage are nearby.
     function I.cleanup(s)
         if not s or not s.hero or type(s.inventory)~='table' or s.now-cleanupAt<1.5 then return nil end
-        if B.dist(s.hero.pos,B.map.home(s))>1100 or s.hero.recentDamage>0
-            or countEnemies(s,s.hero,1400)>0 then return nil end
-        local active={}
+        if s.hero.recentDamage>0 or countEnemies(s,s.hero,1400)>0 or s.hero.channeling or s.hero.casting then return nil end
+        local active,used,backpack={},{},{}
         for _,item in ipairs(s.inventory) do
-            if type(item.slot)=='number' and item.slot>=0 and item.slot<=5 then active[#active+1]=item end
+            if type(item.slot)=='number' and item.slot>=0 and item.slot<=5 then
+                active[#active+1]=item used[item.slot]=true
+            elseif type(item.slot)=='number' and item.slot>=6 and item.slot<=8 then
+                backpack[#backpack+1]=item
+            end
+        end
+        local importance={
+            item_boots=100,item_phase_boots=100,item_tranquil_boots=100,
+            item_power_treads=100,item_arcane_boots=100,item_guardian_greaves=100,
+            item_boots_of_bearing=100,item_travel_boots=100,item_travel_boots_2=100,
+            item_invis_sword=96,item_silver_edge=98,
+            item_yasha_and_kaya=90,item_cyclone=92,item_wind_waker=97,
+            item_black_king_bar=99,item_lotus_orb=95,item_force_staff=94,
+            item_glimmer_cape=94,item_spirit_vessel=93,item_urn_of_shadows=82,
+            item_blade_mail=88,item_aeon_disk=96,item_shivas_guard=91,
+            item_sphere=96,item_octarine_core=90,item_ultimate_scepter=89,
+            item_magic_wand=84,item_dust=78,item_smoke_of_deceit=76,
+            item_ward_observer=74,item_ward_sentry=74,item_ward_dispenser=75,
+            item_faerie_fire=72,item_tango=70,item_flask=68,item_clarity=64,
+        }
+        local function itemImportance(item)
+            return importance[item.name]
+                or ((item.cost or 0)>=800 and 60+(item.cost or 0)/1000 or 20+(item.cost or 0)/1000)
+        end
+        local important,importantScore
+        for _,item in ipairs(backpack) do
+            local score=itemImportance(item)
+            if score<60 then score=nil end
+            if score and (not importantScore or score>importantScore) then important,importantScore=item,score end
+        end
+        if important and #active<6 then
+            local slot
+            for n=0,5 do if not used[n] then slot=n break end end
+            if slot~=nil then
+                cleanupAt=s.now
+                return {kind='move_item',item=important,destinationSlot=slot,
+                    reason='Move important backpack item into active inventory: '..important.name,priority=12}
+            end
         end
         if #active<6 then return nil end
         local phase=type(s.ownedItems)=='table' and (s.ownedItems.item_phase_boots or 0)>0
@@ -339,15 +375,31 @@ return function(B)
         local best,bestRank
         for _,item in ipairs(active) do
             local r=rank[item.name]
-            local allowed=r==1 and s.time>=600
+            local allowed=r==1 and (important~=nil or s.time>=600)
                 or r==2 and s.time>=900
                 or r==3 and phase
-            if allowed and item.sellable==true and not (item.name or ''):find('boots',1,true)
+            if allowed and item.droppable==true and not (item.name or ''):find('boots',1,true)
                 and (not bestRank or r<bestRank) then best,bestRank=item,r end
         end
-        if not best then return nil end
-        cleanupAt=s.now
-        return {kind='sell',item=best,reason='Sell obsolete cheap slot blocker at fountain: '..best.name,priority=8}
+        if best then
+            cleanupAt=s.now
+            return {kind='drop',item=best,pos=B.toward(s.hero.pos,B.map.home(s),80),
+                reason='Drop obsolete cheap slot blocker: '..best.name,priority=10}
+        end
+        if important then
+            local replace,replaceScore
+            for _,item in ipairs(active) do
+                local score=itemImportance(item)
+                if not (item.name or ''):find('boots',1,true)
+                    and (not replaceScore or score<replaceScore) then replace,replaceScore=item,score end
+            end
+            if replace and importantScore>replaceScore+5 then
+                cleanupAt=s.now
+                return {kind='move_item',item=important,destinationSlot=replace.slot,swap=true,
+                    reason='Swap important backpack item with lower-priority active item',priority=11}
+            end
+        end
+        return nil
     end
 
     local healingHeroes = { npc_dota_hero_huskar = true, npc_dota_hero_alchemist = true,

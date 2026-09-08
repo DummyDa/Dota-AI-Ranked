@@ -30,7 +30,7 @@ local B = {}
 do
 local initialize = (function()
 return function(B)
-    B.version = '0.1.9-chat-retry'
+    B.version = '0.2.0-inventory-charge'
     B.config = {laningEnd=600, decisionInterval=0.12, modeHold=1.2,
         externalEnabled=false, bridgeEnabled=false, botEnabled=true, debug=true,
         lowHpChargeThreshold=0.25}
@@ -824,16 +824,15 @@ return function(B)
             end
             return nil
         end
-        -- Global finisher: act independently of the current walking/laning mode.
-        -- The adapter exposes only visible enemies, and safeEngage retains the
-        -- known-tower / obvious-outnumbering guard for the destination.
-        if not retreating(mode) then
+        -- Explicit global finisher policy. Before 10:00 it requires more than
+        -- half of our health; after 10:00 own HP and the active macro mode do
+        -- not block a Charge on an observed low-health enemy.
+        if s.time>=600 or (h.hpPct or 0)>0.5 then
             local charge = abilities[chargeName]
             local threshold = (B.config and B.config.lowHpChargeThreshold) or 0.25
             local best, score
             for _, e in ipairs(s.enemies or {}) do
-                if enemy(s, e) and (e.hpPct or 1) <= threshold
-                    and not e.stunned and B.threat and B.threat.safeEngage(s, e) then
+                if enemy(s, e) and (e.hpPct or 1) <= threshold then
                     local value = (1 - (e.hpPct or 1)) * 100 - distance(h, e) / 5000
                     if e.channeling then value = value + 10 end
                     if not score or value > score then best, score = e, value end
@@ -841,7 +840,7 @@ return function(B)
             end
             if best and not h.rooted and ready(s, charge, 'target', best) then
                 local i = cast(charge, best, 'Global Charge on visible low-health enemy', 95)
-                i.lowHpFinisher = true
+                i.lowHpFinisher = true i.forceCharge=true
                 return i
             end
         end
@@ -1342,16 +1341,52 @@ return function(B)
         return nil
     end
 
-    -- Inventory maintenance is deliberately conservative. Selling is attempted
-    -- only at our fountain, outside combat, and only when all six active slots
-    -- are occupied. Boots and sustain consumables are never selected here.
+    -- Keep important usable items out of backpack. If all six active slots are
+    -- occupied, discard obsolete cheap clutter first; boots and Tango are never
+    -- discarded. Manipulation is deferred while enemies or damage are nearby.
     function I.cleanup(s)
         if not s or not s.hero or type(s.inventory)~='table' or s.now-cleanupAt<1.5 then return nil end
-        if B.dist(s.hero.pos,B.map.home(s))>1100 or s.hero.recentDamage>0
-            or countEnemies(s,s.hero,1400)>0 then return nil end
-        local active={}
+        if s.hero.recentDamage>0 or countEnemies(s,s.hero,1400)>0 or s.hero.channeling or s.hero.casting then return nil end
+        local active,used,backpack={},{},{}
         for _,item in ipairs(s.inventory) do
-            if type(item.slot)=='number' and item.slot>=0 and item.slot<=5 then active[#active+1]=item end
+            if type(item.slot)=='number' and item.slot>=0 and item.slot<=5 then
+                active[#active+1]=item used[item.slot]=true
+            elseif type(item.slot)=='number' and item.slot>=6 and item.slot<=8 then
+                backpack[#backpack+1]=item
+            end
+        end
+        local importance={
+            item_boots=100,item_phase_boots=100,item_tranquil_boots=100,
+            item_power_treads=100,item_arcane_boots=100,item_guardian_greaves=100,
+            item_boots_of_bearing=100,item_travel_boots=100,item_travel_boots_2=100,
+            item_invis_sword=96,item_silver_edge=98,
+            item_yasha_and_kaya=90,item_cyclone=92,item_wind_waker=97,
+            item_black_king_bar=99,item_lotus_orb=95,item_force_staff=94,
+            item_glimmer_cape=94,item_spirit_vessel=93,item_urn_of_shadows=82,
+            item_blade_mail=88,item_aeon_disk=96,item_shivas_guard=91,
+            item_sphere=96,item_octarine_core=90,item_ultimate_scepter=89,
+            item_magic_wand=84,item_dust=78,item_smoke_of_deceit=76,
+            item_ward_observer=74,item_ward_sentry=74,item_ward_dispenser=75,
+            item_faerie_fire=72,item_tango=70,item_flask=68,item_clarity=64,
+        }
+        local function itemImportance(item)
+            return importance[item.name]
+                or ((item.cost or 0)>=800 and 60+(item.cost or 0)/1000 or 20+(item.cost or 0)/1000)
+        end
+        local important,importantScore
+        for _,item in ipairs(backpack) do
+            local score=itemImportance(item)
+            if score<60 then score=nil end
+            if score and (not importantScore or score>importantScore) then important,importantScore=item,score end
+        end
+        if important and #active<6 then
+            local slot
+            for n=0,5 do if not used[n] then slot=n break end end
+            if slot~=nil then
+                cleanupAt=s.now
+                return {kind='move_item',item=important,destinationSlot=slot,
+                    reason='Move important backpack item into active inventory: '..important.name,priority=12}
+            end
         end
         if #active<6 then return nil end
         local phase=type(s.ownedItems)=='table' and (s.ownedItems.item_phase_boots or 0)>0
@@ -1359,15 +1394,31 @@ return function(B)
         local best,bestRank
         for _,item in ipairs(active) do
             local r=rank[item.name]
-            local allowed=r==1 and s.time>=600
+            local allowed=r==1 and (important~=nil or s.time>=600)
                 or r==2 and s.time>=900
                 or r==3 and phase
-            if allowed and item.sellable==true and not (item.name or ''):find('boots',1,true)
+            if allowed and item.droppable==true and not (item.name or ''):find('boots',1,true)
                 and (not bestRank or r<bestRank) then best,bestRank=item,r end
         end
-        if not best then return nil end
-        cleanupAt=s.now
-        return {kind='sell',item=best,reason='Sell obsolete cheap slot blocker at fountain: '..best.name,priority=8}
+        if best then
+            cleanupAt=s.now
+            return {kind='drop',item=best,pos=B.toward(s.hero.pos,B.map.home(s),80),
+                reason='Drop obsolete cheap slot blocker: '..best.name,priority=10}
+        end
+        if important then
+            local replace,replaceScore
+            for _,item in ipairs(active) do
+                local score=itemImportance(item)
+                if not (item.name or ''):find('boots',1,true)
+                    and (not replaceScore or score<replaceScore) then replace,replaceScore=item,score end
+            end
+            if replace and importantScore>replaceScore+5 then
+                cleanupAt=s.now
+                return {kind='move_item',item=important,destinationSlot=replace.slot,swap=true,
+                    reason='Swap important backpack item with lower-priority active item',priority=11}
+            end
+        end
+        return nil
     end
 
     local healingHeroes = { npc_dota_hero_huskar = true, npc_dota_hero_alchemist = true,
@@ -2606,13 +2657,23 @@ return function(B)
             end
             return false
         end
-        if kind=='sell' then
+        if kind=='drop' then
             local item=intent.item
-            if not item or not item.handle or type(item.slot)~='number' or item.slot<0 or item.slot>5 then return false end
+            if not item or not item.handle or type(item.slot)~='number' or item.slot<0 or item.slot>8 then return false end
             if (item.name or ''):find('boots',1,true) then return false end
-            if B.dist(s.hero.pos,B.map.home(s))>1100 then return false end
-            if not B.call('Item','IsSellable',false,item.handle) then return false end
-            if not order(s,'DOTA_UNIT_ORDER_SELL_ITEM',nil,nil,item.handle) then return false end
+            if not B.call('Item','IsDroppable',false,item.handle) then return false end
+            local p=intent.pos or B.toward(s.hero.pos,B.map.home(s),80)
+            if not order(s,'DOTA_UNIT_ORDER_DROP_ITEM',nil,p,item.handle) then return false end
+            E.lockUntil=s.now+0.2
+        elseif kind=='move_item' then
+            local item,slot=intent.item,intent.destinationSlot
+            if not item or not item.handle or type(item.slot)~='number' or item.slot<6 or item.slot>8
+                or type(slot)~='number' or slot<0 or slot>5 then return false end
+            for _,current in ipairs(s.inventory or {}) do
+                if current.slot==slot and not intent.swap then return false end
+            end
+            -- MOVE_ITEM encodes the destination inventory slot in target_index.
+            if not order(s,'DOTA_UNIT_ORDER_MOVE_ITEM',slot,nil,item.handle) then return false end
             E.lockUntil=s.now+0.2
         elseif kind=='hold' then
             if E.lastKey==key and s.now-E.lastAt<0.7 then return false end
@@ -2651,7 +2712,8 @@ return function(B)
                     B.log('cast.range','Cast rejected by range: '..a.name..' range='..tostring(a.range),8)
                     return false
                 end
-                if a.name=='spirit_breaker_charge_of_darkness' and (s.hero.rooted or not B.threat.safeEngage(s,target)) then return false end
+                if a.name=='spirit_breaker_charge_of_darkness'
+                    and (s.hero.rooted or (not intent.forceCharge and not B.threat.safeEngage(s,target))) then return false end
                 if not invoke('Ability','CastTarget',a.handle,target.handle,false,false,false,'spirit_breaker_bot') then return false end
                 if a.name=='spirit_breaker_charge_of_darkness' then
                     B.chargeTarget={index=target.index,issuedAt=s.now}
@@ -3277,9 +3339,11 @@ return function(B)
             end
         end
         if not selected then
-            B.chatStatus='waiting channels ('..greetingAttempts..')'
-            B.log('chat.channel','All-chat not ready; channels=['..table.concat(names,',')..']; retrying',5)
-            return
+            -- GetChannels is observed to stay empty in a live private lobby.
+            -- Chat.Say accepts a channel name directly, so use the standard
+            -- all-chat name instead of waiting forever for discovery metadata.
+            selected='All'
+            B.log('chat.channel','Channel list empty; trying direct All channel',5)
         end
         if not B.libs.Chat or type(B.libs.Chat.Say)~='function' then
             B.chatStatus='Chat.Say unavailable' return

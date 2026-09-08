@@ -7,7 +7,8 @@ Vec2=function(x,y) return {x=x,y=y} end
 Color=function(...) return {...} end
 Enum={ModifierState={},ButtonCode={KEY_MOUSE1=1},UnitOrder={
     DOTA_UNIT_ORDER_MOVE_TO_POSITION=1,DOTA_UNIT_ORDER_TRAIN_ABILITY=11,
-    DOTA_UNIT_ORDER_PICKUP_RUNE=15,DOTA_UNIT_ORDER_SELL_ITEM=17},
+    DOTA_UNIT_ORDER_DROP_ITEM=12,DOTA_UNIT_ORDER_PICKUP_RUNE=15,
+    DOTA_UNIT_ORDER_SELL_ITEM=17,DOTA_UNIT_ORDER_MOVE_ITEM=19},
     PlayerOrderIssuer={DOTA_ORDER_ISSUER_PASSED_UNIT_ONLY=0}}
 function unit(index,name,team,x,y)
     return {index=index,name=name,team=team,pos=Vector(x,y,0),hp=1000,maxHp=1000,mana=500,maxMana=500,

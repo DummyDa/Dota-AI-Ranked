@@ -250,16 +250,15 @@ return function(B)
             end
             return nil
         end
-        -- Global finisher: act independently of the current walking/laning mode.
-        -- The adapter exposes only visible enemies, and safeEngage retains the
-        -- known-tower / obvious-outnumbering guard for the destination.
-        if not retreating(mode) then
+        -- Explicit global finisher policy. Before 10:00 it requires more than
+        -- half of our health; after 10:00 own HP and the active macro mode do
+        -- not block a Charge on an observed low-health enemy.
+        if s.time>=600 or (h.hpPct or 0)>0.5 then
             local charge = abilities[chargeName]
             local threshold = (B.config and B.config.lowHpChargeThreshold) or 0.25
             local best, score
             for _, e in ipairs(s.enemies or {}) do
-                if enemy(s, e) and (e.hpPct or 1) <= threshold
-                    and not e.stunned and B.threat and B.threat.safeEngage(s, e) then
+                if enemy(s, e) and (e.hpPct or 1) <= threshold then
                     local value = (1 - (e.hpPct or 1)) * 100 - distance(h, e) / 5000
                     if e.channeling then value = value + 10 end
                     if not score or value > score then best, score = e, value end
@@ -267,7 +266,7 @@ return function(B)
             end
             if best and not h.rooted and ready(s, charge, 'target', best) then
                 local i = cast(charge, best, 'Global Charge on visible low-health enemy', 95)
-                i.lowHpFinisher = true
+                i.lowHpFinisher = true i.forceCharge=true
                 return i
             end
         end

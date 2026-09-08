@@ -1,5 +1,5 @@
 return function(B)
-    B.version = '0.1.9-chat-retry'
+    B.version = '0.2.0-inventory-charge'
     B.config = {laningEnd=600, decisionInterval=0.12, modeHold=1.2,
         externalEnabled=false, bridgeEnabled=false, botEnabled=true, debug=true,
         lowHpChargeThreshold=0.25}

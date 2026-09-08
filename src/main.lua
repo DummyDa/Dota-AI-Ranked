@@ -26,9 +26,11 @@ return function(B)
             end
         end
         if not selected then
-            B.chatStatus='waiting channels ('..greetingAttempts..')'
-            B.log('chat.channel','All-chat not ready; channels=['..table.concat(names,',')..']; retrying',5)
-            return
+            -- GetChannels is observed to stay empty in a live private lobby.
+            -- Chat.Say accepts a channel name directly, so use the standard
+            -- all-chat name instead of waiting forever for discovery metadata.
+            selected='All'
+            B.log('chat.channel','Channel list empty; trying direct All channel',5)
         end
         if not B.libs.Chat or type(B.libs.Chat.Say)~='function' then
             B.chatStatus='Chat.Say unavailable' return

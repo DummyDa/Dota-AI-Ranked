@@ -89,13 +89,23 @@ return function(B)
             end
             return false
         end
-        if kind=='sell' then
+        if kind=='drop' then
             local item=intent.item
-            if not item or not item.handle or type(item.slot)~='number' or item.slot<0 or item.slot>5 then return false end
+            if not item or not item.handle or type(item.slot)~='number' or item.slot<0 or item.slot>8 then return false end
             if (item.name or ''):find('boots',1,true) then return false end
-            if B.dist(s.hero.pos,B.map.home(s))>1100 then return false end
-            if not B.call('Item','IsSellable',false,item.handle) then return false end
-            if not order(s,'DOTA_UNIT_ORDER_SELL_ITEM',nil,nil,item.handle) then return false end
+            if not B.call('Item','IsDroppable',false,item.handle) then return false end
+            local p=intent.pos or B.toward(s.hero.pos,B.map.home(s),80)
+            if not order(s,'DOTA_UNIT_ORDER_DROP_ITEM',nil,p,item.handle) then return false end
+            E.lockUntil=s.now+0.2
+        elseif kind=='move_item' then
+            local item,slot=intent.item,intent.destinationSlot
+            if not item or not item.handle or type(item.slot)~='number' or item.slot<6 or item.slot>8
+                or type(slot)~='number' or slot<0 or slot>5 then return false end
+            for _,current in ipairs(s.inventory or {}) do
+                if current.slot==slot and not intent.swap then return false end
+            end
+            -- MOVE_ITEM encodes the destination inventory slot in target_index.
+            if not order(s,'DOTA_UNIT_ORDER_MOVE_ITEM',slot,nil,item.handle) then return false end
             E.lockUntil=s.now+0.2
         elseif kind=='hold' then
             if E.lastKey==key and s.now-E.lastAt<0.7 then return false end
@@ -134,7 +144,8 @@ return function(B)
                     B.log('cast.range','Cast rejected by range: '..a.name..' range='..tostring(a.range),8)
                     return false
                 end
-                if a.name=='spirit_breaker_charge_of_darkness' and (s.hero.rooted or not B.threat.safeEngage(s,target)) then return false end
+                if a.name=='spirit_breaker_charge_of_darkness'
+                    and (s.hero.rooted or (not intent.forceCharge and not B.threat.safeEngage(s,target))) then return false end
                 if not invoke('Ability','CastTarget',a.handle,target.handle,false,false,false,'spirit_breaker_bot') then return false end
                 if a.name=='spirit_breaker_charge_of_darkness' then
                     B.chargeTarget={index=target.index,issuedAt=s.now}
