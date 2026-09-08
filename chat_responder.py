@@ -20,6 +20,8 @@ For each incoming player message decide whether that player is directly addressi
 or commanding our Spirit Breaker/player. General team information, jokes, arguments between
 other players and enemy messages are not directed to us. Return JSON only:
 {"addressed": boolean, "reply": string}.
+If is_self is true and the message explicitly addresses Bara/Spirit Breaker, treat it as
+an intentional local test and answer normally.
 If addressed is true, reply naturally in the message language using at most 12 words.
 Never insult, argue, mention being an AI, or invent unavailable game facts.
 Enemy messages must always have addressed=false and reply=""."""
@@ -100,7 +102,8 @@ class ChatResponder:
         return bool(self.api_key and self.voice)
 
     def submit(self, message: dict[str, Any]) -> bool:
-        if (message.get("isSelf") and not message.get("selfTest")) or not str(message.get("messageText", "")).strip():
+        own_message_allowed = message.get("selfTest") or message.get("selfAddressed")
+        if (message.get("isSelf") and not own_message_allowed) or not str(message.get("messageText", "")).strip():
             return False
         try:
             self.input_queue.put_nowait(message)
@@ -116,6 +119,7 @@ class ChatResponder:
             "sender": message.get("sourceName") or f"player {message.get('sourcePlayerId')}",
             "hero": message.get("sourceHero") or "unknown",
             "is_ally": bool(message.get("isAlly")),
+            "is_self": bool(message.get("isSelf")),
             "channel": "all" if int(message.get("channelType") or 0) == 11 else "team",
             "message": str(message.get("messageText", ""))[:500],
             "our_hero": "Spirit Breaker",

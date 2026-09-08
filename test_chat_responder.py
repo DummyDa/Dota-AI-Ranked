@@ -62,6 +62,13 @@ class ChatResponderTest(unittest.TestCase):
         value.last_error = ""
         self.assertTrue(value.submit({"isSelf": True, "selfTest": True, "messageText": "бара привет"}))
 
+    def test_addressed_self_message_is_accepted_for_llm(self) -> None:
+        value = ChatResponder.__new__(ChatResponder)
+        value.input_queue = __import__("queue").Queue(maxsize=1)
+        value.last_error = ""
+        self.assertTrue(value.submit({"isSelf": True, "selfAddressed": True,
+                                      "messageText": "бара ты где"}))
+
     def test_normal_self_message_is_ignored(self) -> None:
         value = ChatResponder.__new__(ChatResponder)
         value.input_queue = __import__("queue").Queue(maxsize=1)

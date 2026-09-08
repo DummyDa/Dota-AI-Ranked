@@ -45,12 +45,15 @@ return function(B)
         if type(text)~='string' or #text==0 or #text>1024 or not sourceId then return true end
         local info=playerInfo(sourceId)
         local lowered=text:lower()
-        local selfTest=info.isSelf and (lowered:find('бара',1,true)~=nil or
+        lowered=lowered:match('^%s*(.-)%s*$') or lowered
+        local selfAddressed=info.isSelf and (lowered:find('бара',1,true)~=nil or
             lowered:find('bara',1,true)~=nil or lowered:find('spirit breaker',1,true)~=nil)
-        if info.isSelf and not selfTest then return true end
+        local selfTest=info.isSelf and (lowered=='бара тест' or lowered=='bara test')
+        if info.isSelf and not selfAddressed then return true end
         local payload={protocolVersion=1,messageText=text,channelType=tonumber(message.channel_type) or 0,
             gameTime=B.state and B.state.time or 0,sourcePlayerId=sourceId,sourceName=info.sourceName,
-            sourceHero=info.sourceHero,isAlly=info.isAlly,isSelf=info.isSelf,selfTest=selfTest,
+            sourceHero=info.sourceHero,isAlly=info.isAlly,isSelf=info.isSelf,
+            selfAddressed=selfAddressed,selfTest=selfTest,
             localName=info.localName}
         C.listenUntil=(B.state and B.state.now or 0)+60
         B.voiceStatus='analyzing '..info.sourceName
