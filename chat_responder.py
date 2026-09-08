@@ -13,6 +13,7 @@ from collections import deque
 from pathlib import Path
 from typing import Any
 from urllib.request import Request, urlopen
+from urllib.error import HTTPError
 
 
 SYSTEM_PROMPT = """You are the voice of an autonomous Spirit Breaker support in Dota 2.
@@ -38,8 +39,9 @@ class VoiceOutput:
         self.device_index, self.device_name = self._find_device(device_hint)
         device = self._sd.query_devices(self.device_index)
         self.output_sample_rate = int(float(device.get("default_samplerate", 48000)))
-        logging.info("Piper loaded: %s; output=%s@%sHz", model_path.name,
-                     self.device_name, self.output_sample_rate)
+        self.monitor_index, self.monitor_name, self.monitor_sample_rate = self._find_monitor()
+        logging.info("Piper loaded: %s; output=%s@%sHz; monitor=%s", model_path.name,
+                     self.device_name, self.output_sample_rate, self.monitor_name or "disabled")
 
     def _find_device(self, hint: str | None) -> tuple[int, str]:
         devices = self._sd.query_devices()
@@ -54,6 +56,27 @@ class VoiceOutput:
         available = ", ".join(name for _, name in candidates)
         raise RuntimeError(f"TTS output device containing {requested!r} not found; outputs: {available}")
 
+    def _find_monitor(self) -> tuple[int | None, str | None, int | None]:
+        requested = os.environ.get("DOTA_TTS_MONITOR_DEVICE", "").strip().lower()
+        devices = self._sd.query_devices()
+        if requested:
+            candidates = [i for i, item in enumerate(devices)
+                          if int(item.get("max_output_channels", 0)) > 0
+                          and requested in str(item.get("name", "")).lower()]
+            index = candidates[0] if candidates else None
+        else:
+            default = self._sd.default.device
+            try:
+                index = int(default[1])
+            except (TypeError, IndexError, ValueError):
+                index = None
+        if index is None or index < 0 or index == self.device_index:
+            return None, None, None
+        device = self._sd.query_devices(index)
+        if int(device.get("max_output_channels", 0)) <= 0:
+            return None, None, None
+        return index, str(device.get("name", "default output")), int(float(device.get("default_samplerate", 48000)))
+
     def synthesize(self, text: str) -> tuple[Any, int, float]:
         import numpy as np
 
@@ -64,16 +87,48 @@ class VoiceOutput:
         audio = np.concatenate([chunk.audio_float_array for chunk in chunks]).astype("float32")
         return audio, sample_rate, len(audio) / sample_rate
 
-    def play(self, audio: Any, sample_rate: int) -> None:
-        if sample_rate != self.output_sample_rate:
-            import numpy as np
+    @staticmethod
+    def _resample(audio: Any, sample_rate: int, target_rate: int) -> Any:
+        if sample_rate == target_rate:
+            return audio
+        import numpy as np
 
-            target_length = max(1, round(len(audio) * self.output_sample_rate / sample_rate))
-            source_x = np.arange(len(audio), dtype=np.float64)
-            target_x = np.linspace(0, max(0, len(audio) - 1), target_length)
-            audio = np.interp(target_x, source_x, audio).astype("float32")
-            sample_rate = self.output_sample_rate
-        self._sd.play(audio, samplerate=sample_rate, device=self.device_index, blocking=True)
+        target_length = max(1, round(len(audio) * target_rate / sample_rate))
+        source_x = np.arange(len(audio), dtype=np.float64)
+        target_x = np.linspace(0, max(0, len(audio) - 1), target_length)
+        return np.interp(target_x, source_x, audio).astype("float32")
+
+    def _play_device(self, audio: Any, sample_rate: int, device_index: int) -> None:
+        with self._sd.OutputStream(samplerate=sample_rate, device=device_index,
+                                   channels=1, dtype="float32") as stream:
+            stream.write(audio.reshape(-1, 1))
+
+    def play(self, audio: Any, sample_rate: int) -> None:
+        destinations = [(self.device_index, self.output_sample_rate)]
+        if self.monitor_index is not None and self.monitor_sample_rate is not None:
+            destinations.append((self.monitor_index, self.monitor_sample_rate))
+        errors: list[Exception] = []
+        threads = []
+        for index, target_rate in destinations:
+            prepared = self._resample(audio, sample_rate, target_rate)
+            thread = threading.Thread(
+                target=lambda data=prepared, rate=target_rate, device=index:
+                    self._play_catching(data, rate, device, errors),
+                daemon=True,
+            )
+            threads.append(thread)
+            thread.start()
+        for thread in threads:
+            thread.join()
+        if errors:
+            raise errors[0]
+
+    def _play_catching(self, audio: Any, sample_rate: int, device_index: int,
+                       errors: list[Exception]) -> None:
+        try:
+            self._play_device(audio, sample_rate, device_index)
+        except Exception as exc:
+            errors.append(exc)
 
 
 class ChatResponder:
@@ -82,11 +137,13 @@ class ChatResponder:
         self.api_key = os.environ.get("OPENROUTER_API_KEY", "").strip()
         self.input_queue: queue.Queue[dict[str, Any]] = queue.Queue(maxsize=64)
         self.voice_queue: deque[dict[str, Any]] = deque(maxlen=8)
+        self.notices: deque[dict[str, Any]] = deque(maxlen=16)
         self.lock = threading.RLock()
         self.history: deque[dict[str, Any]] = deque(maxlen=12)
         self.last_error = ""
         self.last_analysis: dict[str, Any] | None = None
         self.active_voice: dict[str, Any] | None = None
+        self.active_analysis: dict[str, Any] | None = None
         self.last_reply_by_source: dict[int, float] = {}
         self.voice: VoiceOutput | None = None
         try:
@@ -106,6 +163,8 @@ class ChatResponder:
         if (message.get("isSelf") and not own_message_allowed) or not str(message.get("messageText", "")).strip():
             return False
         try:
+            message = dict(message)
+            message["_queuedAt"] = time.monotonic()
             self.input_queue.put_nowait(message)
             return True
         except queue.Full:
@@ -168,6 +227,12 @@ class ChatResponder:
     def _run(self) -> None:
         while True:
             message = self.input_queue.get()
+            with self.lock:
+                self.active_analysis = {
+                    "started": time.monotonic(),
+                    "source": message.get("sourceName") or "player",
+                    "slowSent": False,
+                }
             try:
                 if message.get("selfTest"):
                     result = {
@@ -185,10 +250,16 @@ class ChatResponder:
                         "text": str(message.get("messageText", ""))[:200],
                     })
                 if not result["addressed"] or not self.voice:
+                    with self.lock:
+                        self.notices.append({"type": "done", "text": "ответ не требуется",
+                                             "chat": False, "final": True})
                     continue
                 source_id = int(message.get("sourcePlayerId") or -1)
                 now = time.monotonic()
                 if now - self.last_reply_by_source.get(source_id, -100.0) < 6.0:
+                    with self.lock:
+                        self.notices.append({"type": "done", "text": "ответ пропущен: cooldown",
+                                             "chat": False, "final": True})
                     continue
                 started = time.monotonic()
                 audio, sample_rate, duration = self.voice.synthesize(result["reply"])
@@ -206,23 +277,49 @@ class ChatResponder:
                 logging.info("Voice reply queued for %s: %s", message.get("sourceName"), result["reply"])
             except Exception as exc:
                 self.last_error = str(exc)
+                if isinstance(exc, HTTPError) and exc.code == 429:
+                    error_text = "Qwen: лимит запросов, ответ пропущен"
+                elif isinstance(exc, TimeoutError):
+                    error_text = "Qwen: таймаут, ответ не получен"
+                else:
+                    error_text = "Qwen: ошибка анализа, ответ не получен"
+                with self.lock:
+                    self.notices.append({"type": "error", "text": error_text,
+                                         "chat": True, "final": True})
                 logging.exception("Chat analysis failed")
             finally:
+                with self.lock:
+                    self.active_analysis = None
                 self.input_queue.task_done()
 
     def poll_voice(self) -> dict[str, Any]:
         with self.lock:
+            notice = None
+            if self.active_analysis is not None:
+                elapsed = time.monotonic() - float(self.active_analysis["started"])
+                if elapsed >= 4.0 and not self.active_analysis["slowSent"]:
+                    self.active_analysis["slowSent"] = True
+                    notice = {"type": "slow", "text": "Qwen думает дольше 4 секунд...",
+                              "chat": True, "final": False}
+            if notice is None and self.notices:
+                notice = self.notices.popleft()
             if self.active_voice is not None or not self.voice_queue:
-                return {"ready": False}
+                response = {"ready": False}
+                if notice is not None:
+                    response["notice"] = notice
+                return response
             self.active_voice = self.voice_queue.popleft()
             job = self.active_voice
-            return {
+            response = {
                 "ready": True,
                 "id": job["id"],
                 "text": job["text"],
                 "duration": round(float(job["duration"]), 3),
                 "synthesisMs": job["synthesisMs"],
             }
+            if notice is not None:
+                response["notice"] = notice
+            return response
 
     def start_voice(self, job_id: str) -> bool:
         with self.lock:
@@ -258,6 +355,7 @@ class ChatResponder:
                 "ttsReady": self.voice is not None,
                 "ttsDevice": self.voice.device_name if self.voice else None,
                 "ttsSampleRate": self.voice.output_sample_rate if self.voice else None,
+                "ttsMonitor": self.voice.monitor_name if self.voice else None,
                 "pendingMessages": self.input_queue.qsize(),
                 "pendingVoices": len(self.voice_queue),
                 "voiceActive": self.active_voice is not None,

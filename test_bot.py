@@ -309,6 +309,9 @@ class BotTest(unittest.TestCase):
     def test_ready_voice_job_opens_and_closes_voice_recording(self):
         self.check("B.script.OnUpdate(); B.chatVoice.listenUntil=clock+60; local polls=0; HTTP.Request=function(method,url,opts,cb) if url:find('/poll') then local body=B.json:decode(opts.data); assert(body.protocolVersion==1); polls=polls+1; if polls==1 then cb({code=200,response='{\\\"ready\\\":true,\\\"id\\\":\\\"v1\\\",\\\"text\\\":\\\"go\\\",\\\"duration\\\":0.5}'}) else cb({code=200,response='{\\\"ready\\\":false}'}) end else cb({code=200,response='{\\\"ok\\\":true}'}) end end; B.chatVoice.tick(B.state); assert(B.chatVoice.recording); assert(orders[#orders].kind=='command' and orders[#orders].args[1]=='+voicerecord'); B.chatVoice.tick({now=B.state.now+2}); assert(not B.chatVoice.recording and orders[#orders].args[1]=='-voicerecord')")
 
+    def test_slow_voice_notice_is_written_to_team_chat(self):
+        self.check("B.script.OnUpdate(); B.chatVoice.listenUntil=clock+60; HTTP.Request=function(method,url,opts,cb) if url:find('/poll') then cb({code=200,response='{\\\"ready\\\":false,\\\"notice\\\":{\\\"type\\\":\\\"slow\\\",\\\"text\\\":\\\"Qwen slow\\\",\\\"chat\\\":true,\\\"final\\\":false}}'}) else cb({code=200,response='{}'}) end end; B.chatVoice.tick(B.state); assert(orders[#orders].kind=='command' and orders[#orders].args[1]=='say_team \\\"[DotaAI] Qwen slow\\\"')")
+
     def test_special_values_only_queried_on_relevant_items(self):
         self.check("Ability.GetLevelSpecialValueFor=function() error('unrelated special query') end; hero.abilities[0]=ability('spirit_breaker_charge_of_darkness',8,99999,2); local s=B.adapter.refresh(); assert(B.capabilities['Ability.GetLevelSpecialValueFor']==nil)")
 

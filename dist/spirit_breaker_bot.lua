@@ -3281,6 +3281,11 @@ return function(B)
         local sent=pcall(HTTP.Request,'POST','http://127.0.0.1:8765'..path,{data=data},callback or function() end)
         return sent
     end
+    local function teamLog(text)
+        if not B.libs.Engine or type(B.libs.Engine.ExecuteCommand)~='function' then return end
+        local safe=tostring(text or ''):gsub('[\r\n";]',' '):sub(1,180)
+        if #safe>0 then pcall(B.libs.Engine.ExecuteCommand,'say_team "[DotaAI] '..safe..'"') end
+    end
     local function playerInfo(sourceId)
         local localPlayer=B.call('Players','GetLocal',nil)
         local localHero=localPlayer and B.call('Player','GetAssignedHero',nil,localPlayer)
@@ -3368,7 +3373,14 @@ return function(B)
             C.polling=false
             if not response or tostring(response.code)~='200' or type(response.response)~='string' then return end
             local parsed,job=pcall(function() return B.json:decode(response.response) end)
-            if parsed and type(job)=='table' and job.ready then startVoice(job,s) end
+            if parsed and type(job)=='table' then
+                if type(job.notice)=='table' then
+                    B.voiceStatus=tostring(job.notice.text or job.notice.type or 'notice')
+                    if job.notice.chat then teamLog(job.notice.text) end
+                    if job.notice.final and not job.ready then C.listenUntil=0 end
+                end
+                if job.ready then startVoice(job,s) end
+            end
         end)
         if not sent then C.polling=false end
     end
