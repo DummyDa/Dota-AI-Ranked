@@ -22,4 +22,5 @@ foreach ($listener in @($listeners)) {
 }
 if ($listeners) { Start-Sleep -Milliseconds 400 }
 Set-Location -LiteralPath $project
-& $python -u bridge_server.py --chat-responder --no-record --openrouter-model 'qwen/qwen3.7-flash' --tts-device 'CABLE Input'
+& $python -u bridge_server.py --chat-responder --openrouter-model 'qwen/qwen3.7-flash' `
+    --piper-model 'models/piper/ru_RU-denis-medium.onnx' --tts-device 'CABLE Input'
